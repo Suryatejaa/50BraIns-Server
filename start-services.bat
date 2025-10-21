@@ -49,11 +49,11 @@ echo API Gateway: http://localhost:3000
 echo WebSocket Gateway: http://localhost:4000
 echo Auth Service: http://localhost:4001
 echo User Service: http://localhost:4002
-@REM echo Clan Service: http://localhost:4003
 echo Gig Service: http://localhost:4004
-@REM echo Credit Service: http://localhost:4005
 echo Reputation Service: http://localhost:4006
 echo Work-history Service: http://localhost:4007
-@REM echo Social-media Service: http://localhost:4008
 echo Notification Service: http://localhost:4009
 pause
+@REM echo Clan Service: http://localhost:4003
+@REM echo Credit Service: http://localhost:4005
+@REM echo Social-media Service: http://localhost:4008
