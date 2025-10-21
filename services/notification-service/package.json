@@ -4,7 +4,7 @@
   "description": "50BraIns Notification Service - The heartbeat of user engagement",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=.env.production index.js",
+    "start": "node index.js",
     "dev": "nodemon --env-file=.env.local index.js",
     "test": "jest",
     "prisma:generate": "prisma generate",

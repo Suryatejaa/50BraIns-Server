@@ -4,7 +4,7 @@
   "description": "Centralized reputation scoring system for 50BraIns platform - The heart of the ecosystem",
   "main": "src/index.js",
   "scripts": {
-    "start": "node --env-file=.env.production src/server.js",
+    "start": "node src/server.js",
     "dev": "nodemon --env-file=.env.local src/server.js",
     "test": "jest",
     "prisma:generate": "prisma generate",

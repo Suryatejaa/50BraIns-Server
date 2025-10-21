@@ -4,7 +4,7 @@
   "description": "Gig and opportunity management service for 50BraIns platform",
   "main": "src/index.js",
   "scripts": {
-    "start": "node --env-file=.env.production src/index.js",
+    "start": "node index.js",
     "dev": "nodemon --env-file=.env.local src/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

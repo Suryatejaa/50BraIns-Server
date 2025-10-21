@@ -4,7 +4,7 @@
   "description": "Express-based authentication service for 50BraIns platform",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=.env.production index.js",
+    "start": "node index.js",
     "dev": "nodemon --env-file=.env.local index.js",
     "debug": "node server.js",
     "test": "jest",

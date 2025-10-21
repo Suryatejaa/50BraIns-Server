@@ -9,7 +9,7 @@ dist/
 build/
 
 frontend-profile/
-
+railway-env.txt
 # Environment variables
 .env
 .env.local
