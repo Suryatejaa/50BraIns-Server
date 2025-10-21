@@ -1,0 +1,731 @@
+
+> auth-service@1.0.0 test
+> jest
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:49.854Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: ea6cc881-0f8e-4444-be03-15cfbea4663d
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:49.953Z] POST /register - 201 - 99ms - ID: ea6cc881-0f8e-4444-be03-15cfbea4663d
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:49.977Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 40440237-7709-481a-937c-a7091828bc6c
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:49.989Z] POST /api/auth/register - 400 - 12ms - ID: 40440237-7709-481a-937c-a7091828bc6c
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.005Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 969e3c91-9cb8-4c15-a6fa-ed099a385dde
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.012Z] POST /api/auth/register - 400 - 7ms - ID: 969e3c91-9cb8-4c15-a6fa-ed099a385dde
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.028Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 23f78ef8-260f-4ebd-b64f-511549fd37fa
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.071Z] POST /register - 201 - 43ms - ID: 23f78ef8-260f-4ebd-b64f-511549fd37fa
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.080Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 330786bf-46f4-4e18-a0a2-9e07ffc35ed4
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.094Z] POST /api/auth/register - 409 - 14ms - ID: 330786bf-46f4-4e18-a0a2-9e07ffc35ed4
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.108Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: f89f3f39-0da4-4c76-aafd-9e920078cc04
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.113Z] POST /api/auth/register - 400 - 5ms - ID: f89f3f39-0da4-4c76-aafd-9e920078cc04
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.126Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 80567530-2b75-42d9-b442-5f0cdcdae99a
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.164Z] POST /register - 201 - 38ms - ID: 80567530-2b75-42d9-b442-5f0cdcdae99a
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.172Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: dd82b14e-ebe3-4c30-8695-54b94ad89def
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:50.216Z] POST /login - 200 - 44ms - ID: dd82b14e-ebe3-4c30-8695-54b94ad89def
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.233Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 0d7e9451-ba24-45e4-ab80-999dcb3e6215
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.264Z] POST /register - 201 - 31ms - ID: 0d7e9451-ba24-45e4-ab80-999dcb3e6215
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.272Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 5a8f46d0-b142-4492-bce4-a13e6b8138e1
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.278Z] POST /api/auth/login - 401 - 6ms - ID: 5a8f46d0-b142-4492-bce4-a13e6b8138e1
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.298Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: cf8a4f90-d81b-42ff-829f-a9829f9d82ca
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.329Z] POST /register - 201 - 31ms - ID: cf8a4f90-d81b-42ff-829f-a9829f9d82ca
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.336Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: aa34f8bf-564b-421d-a8df-898be3175f33
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.359Z] POST /api/auth/login - 401 - 23ms - ID: aa34f8bf-564b-421d-a8df-898be3175f33
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.372Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 6308ab3d-cbe5-48bf-9a64-74b1cd43236e
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.403Z] POST /register - 201 - 31ms - ID: 6308ab3d-cbe5-48bf-9a64-74b1cd43236e
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.411Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 0e71e663-c48f-44f1-8a04-d4a01a5a09d3
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.414Z] POST /api/auth/login - 400 - 3ms - ID: 0e71e663-c48f-44f1-8a04-d4a01a5a09d3
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.430Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 14210f29-8300-4f7f-9d94-c24e9d21bae4
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.459Z] POST /register - 201 - 29ms - ID: 14210f29-8300-4f7f-9d94-c24e9d21bae4
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.466Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 60b183b4-af70-4d08-9f22-7614e3429c14
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:50.492Z] POST /login - 200 - 26ms - ID: 60b183b4-af70-4d08-9f22-7614e3429c14
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.499Z] POST /api/auth/refresh - ::ffff:127.0.0.1 - ID: ab349941-d32e-4ebf-b914-11c9570b4043
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:50.512Z] POST /refresh - 200 - 13ms - ID: ab349941-d32e-4ebf-b914-11c9570b4043
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.525Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 1a957333-0ea5-4b56-89b2-380aa3719320
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.557Z] POST /register - 201 - 32ms - ID: 1a957333-0ea5-4b56-89b2-380aa3719320
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.565Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 56bfdd79-fbb7-4dc1-94fa-d1813659cb5a
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:50.592Z] POST /login - 200 - 27ms - ID: 56bfdd79-fbb7-4dc1-94fa-d1813659cb5a
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.599Z] POST /api/auth/refresh - ::ffff:127.0.0.1 - ID: 95391512-0cf6-4076-8c60-75bd7c021eda
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.605Z] POST /api/auth/refresh - 400 - 6ms - ID: 95391512-0cf6-4076-8c60-75bd7c021eda
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.618Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: ebb4bf5b-6756-42ff-b3d8-a998392152eb
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.649Z] POST /register - 201 - 31ms - ID: ebb4bf5b-6756-42ff-b3d8-a998392152eb
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.656Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: a65ba47d-1ee1-44b6-9976-b139a6e6d9ef
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:50.685Z] POST /login - 200 - 29ms - ID: a65ba47d-1ee1-44b6-9976-b139a6e6d9ef
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.692Z] POST /api/auth/refresh - ::ffff:127.0.0.1 - ID: c1c3914d-b114-42da-9175-d7fc32d7fd8f
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.698Z] POST /api/auth/refresh - 401 - 6ms - ID: c1c3914d-b114-42da-9175-d7fc32d7fd8f
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.713Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 453e3782-19e1-4c51-aea0-cd2689446884
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.745Z] POST /register - 201 - 32ms - ID: 453e3782-19e1-4c51-aea0-cd2689446884
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.753Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: be3323de-367e-44b0-94c9-55c279d87aa5
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:50.780Z] POST /login - 200 - 27ms - ID: be3323de-367e-44b0-94c9-55c279d87aa5
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.788Z] POST /api/auth/logout - ::ffff:127.0.0.1 - ID: 4dd72e57-5404-45b4-8b7c-1e0a69c8bd3d
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.945Z] POST /logout - 500 - 157ms - ID: 4dd72e57-5404-45b4-8b7c-1e0a69c8bd3d
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    Logout error: {
+      error: 'Authentication failed',
+      code: 'AUTH_ERROR',
+      timestamp: '2025-06-25T12:17:50.944Z'
+    }
+
+      at Object.log (tests/auth.controller.test.js:225:50)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:50.961Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: b5e28479-0077-40ac-b6dc-6059d7885bf1
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:50.992Z] POST /register - 201 - 31ms - ID: b5e28479-0077-40ac-b6dc-6059d7885bf1
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:50.999Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 20cc7f71-52b6-4d59-ace0-4c45a602109a
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:51.027Z] POST /login - 200 - 28ms - ID: 20cc7f71-52b6-4d59-ace0-4c45a602109a
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.034Z] POST /api/auth/logout - ::ffff:127.0.0.1 - ID: 1ce2e704-3b56-437f-a255-f1871680690b
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.040Z] POST /logout - 401 - 6ms - ID: 1ce2e704-3b56-437f-a255-f1871680690b
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:51.055Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: b9c18d76-ac7a-4d54-bf89-c966a9c073b5
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.086Z] POST /register - 201 - 31ms - ID: b9c18d76-ac7a-4d54-bf89-c966a9c073b5
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.093Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 71f1c6fb-c458-41bf-a9ec-df3a20d594c5
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:51.120Z] POST /login - 200 - 27ms - ID: 71f1c6fb-c458-41bf-a9ec-df3a20d594c5
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.126Z] POST /api/auth/logout-all - ::ffff:127.0.0.1 - ID: 2d77f8fc-bec9-475b-88cb-86024658fe5c
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.136Z] POST /logout-all - 500 - 10ms - ID: 2d77f8fc-bec9-475b-88cb-86024658fe5c
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    Logout-all error: {
+      error: 'Authentication failed',
+      code: 'AUTH_ERROR',
+      timestamp: '2025-06-25T12:17:51.135Z'
+    }
+
+      at Object.log (tests/auth.controller.test.js:256:50)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:51.150Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 45ea9014-52fa-472f-ba9d-6da4505173d8
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.181Z] POST /register - 201 - 31ms - ID: 45ea9014-52fa-472f-ba9d-6da4505173d8
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.190Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 27c7593b-d628-4ab8-b154-0df48cb585f6
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:51.217Z] POST /login - 200 - 27ms - ID: 27c7593b-d628-4ab8-b154-0df48cb585f6
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.226Z] POST /api/auth/change-password - ::ffff:127.0.0.1 - ID: 3d469f00-6c5a-4895-b832-da73668e1438
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.234Z] POST /change-password - 500 - 8ms - ID: 3d469f00-6c5a-4895-b832-da73668e1438
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    Change-password error: {
+      error: 'Authentication failed',
+      code: 'AUTH_ERROR',
+      timestamp: '2025-06-25T12:17:51.233Z'
+    }
+
+      at Object.log (tests/auth.controller.test.js:285:50)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:51.248Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: 87166fb7-9135-40b6-b2ca-243361102fa4
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.281Z] POST /register - 201 - 33ms - ID: 87166fb7-9135-40b6-b2ca-243361102fa4
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.289Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: 35bd88a2-a7ad-4c6e-921e-fc4ec2a69ccb
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:51.316Z] POST /login - 200 - 27ms - ID: 35bd88a2-a7ad-4c6e-921e-fc4ec2a69ccb
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.326Z] POST /api/auth/change-password - ::ffff:127.0.0.1 - ID: 5334156e-1d83-4adb-8564-ac93a0b104c2
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.336Z] POST /change-password - 500 - 10ms - ID: 5334156e-1d83-4adb-8564-ac93a0b104c2
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    Change-password wrong current error: {
+      error: 'Authentication failed',
+      code: 'AUTH_ERROR',
+      timestamp: '2025-06-25T12:17:51.335Z'
+    }
+
+      at Object.log (tests/auth.controller.test.js:298:50)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    [2025-06-25T12:17:51.352Z] POST /api/auth/register - ::ffff:127.0.0.1 - ID: a8b11ada-f67f-4b1b-a8fe-eecb16d6a6f1
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.383Z] POST /register - 201 - 31ms - ID: a8b11ada-f67f-4b1b-a8fe-eecb16d6a6f1
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.390Z] POST /api/auth/login - ::ffff:127.0.0.1 - ID: d5cc0fde-146f-4f93-a47e-055d5e57b8ee
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    JWT Secret: test_jwt_secret_key_for_testing_only
+
+      at AuthService.log [as generateTokens] (src/services/auth.service.js:311:21)
+
+  console.log
+    [2025-06-25T12:17:51.417Z] POST /login - 200 - 27ms - ID: d5cc0fde-146f-4f93-a47e-055d5e57b8ee
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    [2025-06-25T12:17:51.425Z] POST /api/auth/change-password - ::ffff:127.0.0.1 - ID: a3ac0db9-993e-4a41-a154-8f8ff583b82a
+
+      at log (src/middleware/logging.middleware.js:15:13)
+
+  console.log
+    [2025-06-25T12:17:51.433Z] POST /change-password - 500 - 8ms - ID: a3ac0db9-993e-4a41-a154-8f8ff583b82a
+
+      at ServerResponse.log (src/middleware/logging.middleware.js:20:17)
+
+  console.log
+    Change-password weak new error: {
+      error: 'Authentication failed',
+      code: 'AUTH_ERROR',
+      timestamp: '2025-06-25T12:17:51.432Z'
+    }
+
+      at Object.log (tests/auth.controller.test.js:311:50)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+  console.log
+    ✅ Database cleanup completed successfully
+
+      at log (tests/setup.js:88:17)
+
+FAIL tests/auth.controller.test.js
+  Auth Controller
+    POST /api/auth/register
+      √ should register a new user successfully (160 ms)
+      √ should fail to register with invalid email (28 ms)
+      √ should fail to register with weak password (22 ms)
+      √ should fail to register with duplicate email (82 ms)
+      √ should fail to register with missing required fields (18 ms)
+    POST /api/auth/login
+      √ should login successfully with valid credentials (106 ms)
+      √ should fail to login with invalid email (66 ms)
+      √ should fail to login with invalid password (74 ms)
+      √ should fail to login with missing credentials (57 ms)
+    POST /api/auth/refresh
+      √ should refresh tokens successfully (94 ms)
+      √ should fail to refresh without refresh token (93 ms)
+      √ should fail to refresh with invalid refresh token (93 ms)
+    POST /api/auth/logout
+      × should logout successfully (248 ms)
+      √ should fail to logout without authentication (94 ms)
+    POST /api/auth/logout-all
+      × should logout from all devices successfully (94 ms)
+    POST /api/auth/change-password
+      × should change password successfully (98 ms)
+      × should fail to change password with wrong current password (101 ms)
+      × should fail to change password with weak new password (96 ms)
+
+  ● Auth Controller › POST /api/auth/logout › should logout successfully
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+    [0m [90m 224 |[39m                 [33m.[39m[36mset[39m([32m'Cookie'[39m[33m,[39m [32m`refreshToken=${refreshToken}`[39m)[33m;[39m
+     [90m 225 |[39m             [36mif[39m (response[33m.[39mstatus [33m!==[39m [35m200[39m) console[33m.[39mlog([32m'Logout error:'[39m[33m,[39m response[33m.[39mbody)[33m;[39m
+    [31m[1m>[22m[39m[90m 226 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m200[39m)[33m;[39m
+     [90m     |[39m                                     [31m[1m^[22m[39m
+     [90m 227 |[39m             expect(response[33m.[39mbody[33m.[39msuccess)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m 228 |[39m             expect(response[33m.[39mbody[33m.[39mmessage)[33m.[39mtoBe([32m'Logged out successfully'[39m)[33m;[39m
+     [90m 229 |[39m         })[33m;[39m[0m
+
+      at Object.toBe (tests/auth.controller.test.js:226:37)
+
+  ● Auth Controller › POST /api/auth/logout-all › should logout from all devices successfully
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+    [0m [90m 255 |[39m                 [33m.[39m[36mset[39m([32m'Authorization'[39m[33m,[39m [32m`Bearer ${accessToken}`[39m)[33m;[39m
+     [90m 256 |[39m             [36mif[39m (response[33m.[39mstatus [33m!==[39m [35m200[39m) console[33m.[39mlog([32m'Logout-all error:'[39m[33m,[39m response[33m.[39mbody)[33m;[39m
+    [31m[1m>[22m[39m[90m 257 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m200[39m)[33m;[39m
+     [90m     |[39m                                     [31m[1m^[22m[39m
+     [90m 258 |[39m             expect(response[33m.[39mbody[33m.[39msuccess)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m 259 |[39m             expect(response[33m.[39mbody[33m.[39mmessage)[33m.[39mtoBe([32m'Logged out from all devices successfully'[39m)[33m;[39m
+     [90m 260 |[39m         })[33m;[39m[0m
+
+      at Object.toBe (tests/auth.controller.test.js:257:37)
+
+  ● Auth Controller › POST /api/auth/change-password › should change password successfully
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+    [0m [90m 284 |[39m                 })[33m;[39m
+     [90m 285 |[39m             [36mif[39m (response[33m.[39mstatus [33m!==[39m [35m200[39m) console[33m.[39mlog([32m'Change-password error:'[39m[33m,[39m response[33m.[39mbody)[33m;[39m
+    [31m[1m>[22m[39m[90m 286 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m200[39m)[33m;[39m
+     [90m     |[39m                                     [31m[1m^[22m[39m
+     [90m 287 |[39m             expect(response[33m.[39mbody[33m.[39msuccess)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m 288 |[39m             expect(response[33m.[39mbody[33m.[39mmessage)[33m.[39mtoBe([32m'Password changed successfully'[39m)[33m;[39m
+     [90m 289 |[39m         })[33m;[39m[0m
+
+      at Object.toBe (tests/auth.controller.test.js:286:37)
+
+  ● Auth Controller › POST /api/auth/change-password › should fail to change password with wrong current password
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 401
+    Received: 500
+
+    [0m [90m 297 |[39m                 })[33m;[39m
+     [90m 298 |[39m             [36mif[39m (response[33m.[39mstatus [33m!==[39m [35m401[39m) console[33m.[39mlog([32m'Change-password wrong current error:'[39m[33m,[39m response[33m.[39mbody)[33m;[39m
+    [31m[1m>[22m[39m[90m 299 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m401[39m)[33m;[39m
+     [90m     |[39m                                     [31m[1m^[22m[39m
+     [90m 300 |[39m             expect(response[33m.[39mbody[33m.[39msuccess)[33m.[39mtoBe([36mfalse[39m)[33m;[39m
+     [90m 301 |[39m             expect(response[33m.[39mbody[33m.[39merror)[33m.[39mtoBe([32m'Current password is incorrect'[39m)[33m;[39m
+     [90m 302 |[39m         })[33m;[39m[0m
+
+      at Object.toBe (tests/auth.controller.test.js:299:37)
+
+  ● Auth Controller › POST /api/auth/change-password › should fail to change password with weak new password
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 400
+    Received: 500
+
+    [0m [90m 310 |[39m                 })[33m;[39m
+     [90m 311 |[39m             [36mif[39m (response[33m.[39mstatus [33m!==[39m [35m400[39m) console[33m.[39mlog([32m'Change-password weak new error:'[39m[33m,[39m response[33m.[39mbody)[33m;[39m
+    [31m[1m>[22m[39m[90m 312 |[39m             expect(response[33m.[39mstatus)[33m.[39mtoBe([35m400[39m)[33m;[39m
+     [90m     |[39m                                     [31m[1m^[22m[39m
+     [90m 313 |[39m             expect(response[33m.[39mbody[33m.[39msuccess)[33m.[39mtoBe([36mfalse[39m)[33m;[39m
+     [90m 314 |[39m         })[33m;[39m
+     [90m 315 |[39m     })[33m;[39m[0m
+
+      at Object.toBe (tests/auth.controller.test.js:312:37)
+
+Test Suites: 1 failed, 1 total
+Tests:       5 failed, 13 passed, 18 total
+Snapshots:   0 total
+Time:        3.643 s, estimated 4 s
+Ran all test suites.

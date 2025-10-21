@@ -1,0 +1,117 @@
+
+
+# 💠 CLAN SERVICE — DEFINITION & SCOPE (At Scale)
+
+---
+
+## 🔥 TL;DR
+
+> **Clan Service** is the **collaboration engine** of 50Brains.
+> It allows creators (filmmakers, influencers, editors, etc.) to **form teams (Clans)** and work together, get hired as a unit, build credibility, and grow rank.
+> It enables both **internal team dynamics** and **external visibility** to brands/agencies.
+
+---
+
+## 💡 Core Idea:
+
+Imagine if:
+
+* Upwork let creators form teams like Valorant squads
+* LinkedIn had creator agencies but community-driven
+* PUBG clan logic was used to **rank creative teams**
+
+That’s what this service is: **organized talent power**.
+
+---
+
+## 🎯 Purpose
+
+1. **Enable collaboration at the core level**
+2. **Allow clients to hire teams instead of individuals**
+3. **Promote reputation-based discovery**
+4. **Offer structured growth paths for creative professionals**
+
+---
+
+## 📦 Key Responsibilities (at Scale)
+
+| Feature                        | Description                                                          |
+| ------------------------------ | -------------------------------------------------------------------- |
+| 🛠️ **Clan Creation**          | Any verified user can create a clan and become **Clan Head** (owner) |
+| 👥 **Member Management**       | Add/invite members (by role) → approve/reject → assign permissions   |
+| 🔍 **Clan Visibility**         | Public (searchable) or Private (invite-only), shown in profiles      |
+| 📊 **Clan Analytics**          | Total gigs done, revenue generated, member engagement                |
+| 🧾 **Clan Applications**       | Clans apply to gigs **as a unit** (GigService handles this)          |
+| 🧠 **Clan Reputation Score**   | Based on past performance, reviews, delivery stats                   |
+| 🧑‍💼 **Clan Marketplace**     | Brands can search, view ranked clans, hire with one click            |
+| 🔐 **Role System**             | DOP, Editor, Writer, Model, etc. + dynamic roles for flexibility     |
+| 💸 **Monetization Logic**      | Clan Heads can **charge membership** if ranked                       |
+| ✉️ **Invites / Join Requests** | Users can apply to clans / clans can send invites                    |
+| 📚 **Clan Portfolio**          | Work samples (image/video) tied to each clan                         |
+
+---
+
+## 🏗️ Suggested Microservice Endpoints (MVP+)
+
+| Endpoint                            | Description                                |
+| ----------------------------------- | ------------------------------------------ |
+| `POST /clans`                       | Create new clan (only for verified users)  |
+| `GET /clans/public`                 | Public clans listed by filters/rank        |
+| `GET /clans/:id`                    | Get detailed clan profile                  |
+| `POST /clans/:id/invite`            | Clan head invites user (by ID/username)    |
+| `POST /clans/:id/join`              | User requests to join                      |
+| `PATCH /clans/:id/members/:userId`  | Promote/Demote/Remove members              |
+| `GET /users/:userId/clans`          | Get user’s clans (for profile)             |
+| `POST /clans/:id/portfolio`         | Upload work by clan                        |
+| `GET /clans/:id/analytics`          | Fetch performance stats                    |
+| `POST /clans/:id/charge-membership` | Enable paid join for ranked clans (future) |
+
+---
+
+## 🧠 Data Model at Scale (Simplified)
+
+```prisma
+model Clan {
+  id             String      @id @default(uuid())
+  name           String
+  slug           String      @unique
+  description    String?
+  visibility     ClanVisibility
+  clanHeadId     String
+  members        ClanMember[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model ClanMember {
+  id             String      @id @default(uuid())
+  userId         String
+  clanId         String
+  role           String      // "editor", "writer", etc.
+  joinedAt       DateTime    @default(now())
+  status         String      // "active", "pending", "rejected"
+}
+```
+
+---
+
+## 🧭 Interactions with Other Services
+
+| Service                | Purpose                            |
+| ---------------------- | ---------------------------------- |
+| `user-service`         | Pull member profiles, analytics    |
+| `gig-service`          | Apply to gigs as clan              |
+| `application-service`  | Track clan gig applications        |
+| `media-service`        | Upload clan portfolios             |
+| `payment-service`      | Charge for join (future)           |
+| `notification-service` | Notify users of invites, approvals |
+
+---
+
+## 📈 Scaling Notes
+
+* Use Postgres (relational model fits perfectly)
+* Cache ranked clans with Redis (for homepage)
+* Async sync user profile changes via RabbitMQ
+* Use pagination + filters for public clan feed
+

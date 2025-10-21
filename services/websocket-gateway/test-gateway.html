@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Gateway Test Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .panel h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover { background-color: #1e7e34; }
+        
+        .btn-danger { background-color: #dc3545; }
+        .btn-danger:hover { background-color: #c82333; }
+        
+        .btn-warning { background-color: #ffc107; color: #212529; }
+        .btn-warning:hover { background-color: #e0a800; }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+        
+        .subscription {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .subscription h4 {
+            margin: 0 0 5px 0;
+            color: #495057;
+        }
+        
+        .subscription p {
+            margin: 0;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 WebSocket Gateway Test Client</h1>
+    <p>Test the unified WebSocket gateway service for notifications, clan chat, and more.</p>
+    
+    <div class="container">
+        <!-- Connection Panel -->
+        <div class="panel">
+            <h3>🔗 Connection</h3>
+            
+            <div class="form-group">
+                <label for="userId">User ID:</label>
+                <input type="text" id="userId" value="test-user-123" placeholder="Enter user ID">
+            </div>
+            
+            <div class="form-group">
+                <label for="gatewayUrl">Gateway URL:</label>
+                <input type="text" id="gatewayUrl" value="ws://localhost:4000/ws" readonly>
+            </div>
+            
+            <div id="connectionStatus" class="status disconnected">
+                Disconnected
+            </div>
+            
+            <button id="connectBtn" onclick="connect()">Connect</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            <button id="pingBtn" onclick="ping()" disabled>Ping</button>
+        </div>
+        
+        <!-- Services Panel -->
+        <div class="panel">
+            <h3>🔧 Services</h3>
+            
+            <div class="form-group">
+                <label for="clanId">Clan ID (for chat):</label>
+                <input type="text" id="clanId" value="cmeeky5810001cekg1l822gob" placeholder="Enter clan ID">
+            </div>
+            
+            <button id="subscribeNotificationsBtn" onclick="subscribeNotifications()" disabled>
+                Subscribe to Notifications
+            </button>
+            <button id="unsubscribeNotificationsBtn" onclick="unsubscribeNotifications()" disabled>
+                Unsubscribe from Notifications
+            </button>
+            
+            <button id="subscribeClanChatBtn" onclick="subscribeClanChat()" disabled>
+                Subscribe to Clan Chat
+            </button>
+            <button id="unsubscribeClanChatBtn" onclick="unsubscribeClanChat()" disabled>
+                Unsubscribe from Clan Chat
+            </button>
+            
+            <div id="subscriptions"></div>
+        </div>
+        
+        <!-- Chat Panel -->
+        <div class="panel">
+            <h3>💬 Clan Chat</h3>
+            
+            <div class="form-group">
+                <label for="chatMessage">Message:</label>
+                <textarea id="chatMessage" rows="3" placeholder="Type your message..."></textarea>
+            </div>
+            
+            <button id="sendChatBtn" onclick="sendChatMessage()" disabled>Send Message</button>
+            <button id="typingBtn" onclick="sendTypingIndicator(true)" disabled>Start Typing</button>
+            <button id="stopTypingBtn" onclick="sendTypingIndicator(false)" disabled>Stop Typing</button>
+            
+            <div class="form-group">
+                <label>Chat History:</label>
+                <div id="chatHistory" class="log"></div>
+            </div>
+        </div>
+        
+        <!-- Notifications Panel -->
+        <div class="panel">
+            <h3>🔔 Notifications</h3>
+            
+            <button id="testNotificationBtn" onclick="testNotification()" disabled>Test Notification</button>
+            <button id="ackNotificationBtn" onclick="acknowledgeNotification()" disabled>Acknowledge Last</button>
+            
+            <div class="form-group">
+                <label>Notification History:</label>
+                <div id="notificationHistory" class="log"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Statistics Panel -->
+    <div class="panel" style="grid-column: 1 / -1; margin-top: 20px;">
+        <h3>📊 Statistics</h3>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalConnections">0</div>
+                <div class="stat-label">Total Connections</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="activeConnections">0</div>
+                <div class="stat-label">Active Connections</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="connectedUsers">0</div>
+                <div class="stat-label">Connected Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="notificationSubscribers">0</div>
+                <div class="stat-label">Notification Subscribers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="clanChatSubscribers">0</div>
+                <div class="stat-label">Clan Chat Subscribers</div>
+            </div>
+        </div>
+        
+        <button onclick="refreshStats()">Refresh Statistics</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+    
+    <!-- Log Panel -->
+    <div class="panel" style="grid-column: 1 / -1; margin-top: 20px;">
+        <h3>📝 Event Log</h3>
+        <div id="eventLog" class="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        let lastNotificationId = null;
+        let statsInterval = null;
+        
+        // DOM elements
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const pingBtn = document.getElementById('pingBtn');
+        const subscribeNotificationsBtn = document.getElementById('subscribeNotificationsBtn');
+        const unsubscribeNotificationsBtn = document.getElementById('unsubscribeNotificationsBtn');
+        const subscribeClanChatBtn = document.getElementById('subscribeClanChatBtn');
+        const unsubscribeClanChatBtn = document.getElementById('unsubscribeClanChatBtn');
+        const sendChatBtn = document.getElementById('sendChatBtn');
+        const typingBtn = document.getElementById('typingBtn');
+        const stopTypingBtn = document.getElementById('stopTypingBtn');
+        const testNotificationBtn = document.getElementById('testNotificationBtn');
+        const ackNotificationBtn = document.getElementById('ackNotificationBtn');
+        
+        // Connection functions
+        function connect() {
+            const userId = document.getElementById('userId').value.trim();
+            const gatewayUrl = document.getElementById('gatewayUrl').value;
+            
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+            
+            updateConnectionStatus('connecting', 'Connecting...');
+            
+            try {
+                const fullUrl = `${gatewayUrl}?userId=${encodeURIComponent(userId)}`;
+                ws = new WebSocket(fullUrl);
+                
+                ws.onopen = function() {
+                    isConnected = true;
+                    updateConnectionStatus('connected', 'Connected');
+                    updateButtonStates();
+                    logEvent('Connected to WebSocket Gateway');
+                    
+                    // Start stats refresh
+                    startStatsRefresh();
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleServerMessage(data);
+                    } catch (error) {
+                        logEvent(`Error parsing message: ${error.message}`);
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    isConnected = false;
+                    updateConnectionStatus('disconnected', `Disconnected (Code: ${event.code})`);
+                    updateButtonStates();
+                    logEvent(`Disconnected: ${event.reason || 'No reason'}`);
+                    
+                    // Stop stats refresh
+                    stopStatsRefresh();
+                };
+                
+                ws.onerror = function(error) {
+                    logEvent(`WebSocket Error: ${error.message || 'Unknown error'}`);
+                };
+                
+            } catch (error) {
+                updateConnectionStatus('disconnected', 'Connection failed');
+                logEvent(`Connection Error: ${error.message}`);
+            }
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close(1000, 'User disconnected');
+                ws = null;
+            }
+        }
+        
+        function ping() {
+            if (ws && isConnected) {
+                sendMessage({ type: 'ping' });
+                logEvent('Sent ping');
+            }
+        }
+        
+        // Service subscription functions
+        function subscribeNotifications() {
+            sendMessage({ type: 'subscribe_notifications' });
+            logEvent('Subscribing to notifications...');
+        }
+        
+        function unsubscribeNotifications() {
+            sendMessage({ type: 'unsubscribe_notifications' });
+            logEvent('Unsubscribing from notifications...');
+        }
+        
+        function subscribeClanChat() {
+            const clanId = document.getElementById('clanId').value.trim();
+            if (!clanId) {
+                alert('Please enter a Clan ID');
+                return;
+            }
+            
+            sendMessage({ 
+                type: 'subscribe_clan_chat',
+                clanId: clanId
+            });
+            logEvent(`Subscribing to clan chat: ${clanId}`);
+        }
+        
+        function unsubscribeClanChat() {
+            const clanId = document.getElementById('clanId').value.trim();
+            sendMessage({ 
+                type: 'unsubscribe_clan_chat',
+                clanId: clanId
+            });
+            logEvent(`Unsubscribing from clan chat: ${clanId}`);
+        }
+        
+        // Chat functions
+        function sendChatMessage() {
+            const content = document.getElementById('chatMessage').value.trim();
+            const clanId = document.getElementById('clanId').value.trim();
+            
+            if (!content) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            if (!clanId) {
+                alert('Please enter a Clan ID');
+                return;
+            }
+            
+            sendMessage({
+                type: 'chat',
+                content: content,
+                clanId: clanId,
+                messageType: 'TEXT'
+            });
+            
+            // Add to chat history
+            addChatMessage('You', content, new Date());
+            
+            // Clear input
+            document.getElementById('chatMessage').value = '';
+            
+            logEvent(`Sent chat message to clan: ${clanId}`);
+        }
+        
+        function sendTypingIndicator(isTyping) {
+            const clanId = document.getElementById('clanId').value.trim();
+            if (!clanId) {
+                alert('Please enter a Clan ID');
+                return;
+            }
+            
+            sendMessage({
+                type: 'typing',
+                isTyping: isTyping,
+                clanId: clanId
+            });
+            
+            logEvent(`Typing indicator: ${isTyping ? 'started' : 'stopped'}`);
+        }
+        
+        // Notification functions
+        function testNotification() {
+            // Simulate a test notification
+            const testNotification = {
+                id: `test_${Date.now()}`,
+                type: 'test',
+                title: 'Test Notification',
+                message: 'This is a test notification from the WebSocket Gateway',
+                timestamp: new Date().toISOString()
+            };
+            
+            addNotification(testNotification);
+            logEvent('Test notification created');
+        }
+        
+        function acknowledgeNotification() {
+            if (lastNotificationId) {
+                sendMessage({
+                    type: 'notification_ack',
+                    notificationId: lastNotificationId
+                });
+                logEvent(`Acknowledged notification: ${lastNotificationId}`);
+            } else {
+                alert('No notification to acknowledge');
+            }
+        }
+        
+        // Utility functions
+        function sendMessage(data) {
+            if (ws && isConnected) {
+                ws.send(JSON.stringify(data));
+            } else {
+                logEvent('Cannot send message: not connected');
+            }
+        }
+        
+        function handleServerMessage(data) {
+            logEvent(`Received: ${JSON.stringify(data, null, 2)}`);
+            
+            switch (data.type) {
+                case 'connected':
+                    logEvent(`Connection confirmed: ${data.message}`);
+                    break;
+                    
+                case 'subscription_confirmed':
+                    logEvent(`Subscription confirmed: ${data.service} - ${data.status}`);
+                    updateSubscriptions();
+                    break;
+                    
+                case 'notification':
+                    addNotification(data);
+                    break;
+                    
+                case 'chat':
+                    addChatMessage('Other User', data.content, new Date(data.timestamp));
+                    break;
+                    
+                case 'message_sent':
+                    logEvent(`Message sent confirmation: ${data.messageId}`);
+                    break;
+                    
+                case 'pong':
+                    logEvent('Received pong response');
+                    break;
+                    
+                case 'error':
+                    logEvent(`Server error: ${data.message}`);
+                    break;
+                    
+                default:
+                    logEvent(`Unknown message type: ${data.type}`);
+            }
+        }
+        
+        function addChatMessage(sender, content, timestamp) {
+            const chatHistory = document.getElementById('chatHistory');
+            const timeStr = timestamp.toLocaleTimeString();
+            const messageDiv = document.createElement('div');
+            messageDiv.innerHTML = `<strong>[${timeStr}] ${sender}:</strong> ${content}`;
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+        
+        function addNotification(notification) {
+            const notificationHistory = document.getElementById('notificationHistory');
+            const timeStr = new Date(notification.timestamp).toLocaleTimeString();
+            const notificationDiv = document.createElement('div');
+            notificationDiv.innerHTML = `<strong>[${timeStr}] ${notification.title}:</strong> ${notification.message}`;
+            notificationHistory.appendChild(notificationDiv);
+            notificationHistory.scrollTop = notificationHistory.scrollHeight;
+            
+            lastNotificationId = notification.id;
+        }
+        
+        function updateSubscriptions() {
+            const subscriptionsDiv = document.getElementById('subscriptions');
+            subscriptionsDiv.innerHTML = `
+                <div class="subscription">
+                    <h4>Notifications</h4>
+                    <p>Status: Subscribed</p>
+                </div>
+                <div class="subscription">
+                    <h4>Clan Chat</h4>
+                    <p>Status: Subscribed to ${document.getElementById('clanId').value}</p>
+                </div>
+            `;
+        }
+        
+        function updateConnectionStatus(status, message) {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = message;
+        }
+        
+        function updateButtonStates() {
+            const connected = isConnected;
+            
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            pingBtn.disabled = !connected;
+            subscribeNotificationsBtn.disabled = !connected;
+            unsubscribeNotificationsBtn.disabled = !connected;
+            subscribeClanChatBtn.disabled = !connected;
+            unsubscribeClanChatBtn.disabled = !connected;
+            sendChatBtn.disabled = !connected;
+            typingBtn.disabled = !connected;
+            stopTypingBtn.disabled = !connected;
+            testNotificationBtn.disabled = !connected;
+            ackNotificationBtn.disabled = !connected;
+        }
+        
+        function logEvent(message) {
+            const eventLog = document.getElementById('eventLog');
+            const timestamp = new Date().toLocaleTimeString();
+            eventLog.innerHTML += `[${timestamp}] ${message}\n`;
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+        
+        function refreshStats() {
+            fetch('http://localhost:4000/health/websocket')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.websocket && data.websocket.connections) {
+                        const stats = data.websocket.connections;
+                        document.getElementById('totalConnections').textContent = stats.totalConnections;
+                        document.getElementById('activeConnections').textContent = stats.activeConnections;
+                        document.getElementById('connectedUsers').textContent = stats.users.length;
+                        document.getElementById('notificationSubscribers').textContent = stats.services.notifications;
+                        document.getElementById('clanChatSubscribers').textContent = stats.services.clanChat;
+                    }
+                })
+                .catch(error => {
+                    logEvent(`Error fetching stats: ${error.message}`);
+                });
+        }
+        
+        function startStatsRefresh() {
+            refreshStats();
+            statsInterval = setInterval(refreshStats, 5000); // Refresh every 5 seconds
+        }
+        
+        function stopStatsRefresh() {
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('eventLog').innerHTML = '';
+            document.getElementById('chatHistory').innerHTML = '';
+            document.getElementById('notificationHistory').innerHTML = '';
+        }
+        
+        // Initialize
+        updateButtonStates();
+        logEvent('WebSocket Gateway Test Client loaded');
+        logEvent('Ready to connect to ws://localhost:4000/ws');
+    </script>
+</body>
+</html>

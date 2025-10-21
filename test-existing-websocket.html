@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Existing WebSocket Infrastructure</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .connecting { background-color: #fff3cd; color: #856404; }
+        
+        input, button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        
+        .message-log {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f8f9fa;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message { margin: 2px 0; }
+        .incoming { color: #28a745; }
+        .outgoing { color: #007bff; }
+        .error { color: #dc3545; }
+        .system { color: #6c757d; }
+        
+        .form-group {
+            margin: 10px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Existing WebSocket Infrastructure</h1>
+    <p>This client tests your existing API Gateway WebSocket proxy and Clan Service WebSocket</p>
+    
+    <div class="container">
+        <!-- Connection Panel -->
+        <div class="panel">
+            <h3>🔌 Connection Settings</h3>
+            
+            <div class="form-group">
+                <label for="apiUrl">API Gateway URL:</label>
+                <input type="text" id="apiUrl" value="ws://localhost:3000" placeholder="ws://localhost:3000">
+            </div>
+            
+            <div class="form-group">
+                <label for="userId">User ID:</label>
+                <input type="text" id="userId" value="test-user-123" placeholder="test-user-123">
+            </div>
+            
+            <div class="form-group">
+                <label for="clanId">Clan ID:</label>
+                <input type="text" id="clanId" value="cmee0ea4j000117ba8cfwrw2w" placeholder="clan-id">
+            </div>
+            
+            <div class="form-group">
+                <button onclick="connectToClanChat()" id="connectBtn">🔗 Connect to Clan Chat</button>
+                <button onclick="disconnect()" id="disconnectBtn" disabled>❌ Disconnect</button>
+            </div>
+            
+            <div id="connectionStatus" class="status disconnected">Disconnected</div>
+        </div>
+        
+        <!-- Message Panel -->
+        <div class="panel">
+            <h3>💬 Message Testing</h3>
+            
+            <div class="form-group">
+                <label for="messageContent">Message:</label>
+                <input type="text" id="messageContent" placeholder="Type your message here..." style="width: 100%;">
+            </div>
+            
+            <div class="form-group">
+                <button onclick="sendChatMessage()" id="sendBtn" disabled>📤 Send Chat Message</button>
+                <button onclick="sendTypingIndicator(true)" id="typingBtn" disabled>⌨️ Start Typing</button>
+                <button onclick="sendTypingIndicator(false)" id="stopTypingBtn" disabled>⏹️ Stop Typing</button>
+            </div>
+            
+            <div class="form-group">
+                <button onclick="clearLog()">🗑️ Clear Log</button>
+                <button onclick="testMessageTypes()" id="testBtn" disabled>🧪 Test All Message Types</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Message Log -->
+    <div class="panel" style="margin-top: 20px;">
+        <h3>📋 Message Log</h3>
+        <div id="messageLog" class="message-log"></div>
+    </div>
+    
+    <script>
+        let ws = null;
+        let isConnected = false;
+        
+        function log(message, type = 'system') {
+            const logDiv = document.getElementById('messageLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(messageDiv);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function updateStatus(status, className) {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.textContent = status;
+            statusDiv.className = `status ${className}`;
+        }
+        
+        function updateButtons() {
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const sendBtn = document.getElementById('sendBtn');
+            const typingBtn = document.getElementById('typingBtn');
+            const stopTypingBtn = document.getElementById('stopTypingBtn');
+            const testBtn = document.getElementById('testBtn');
+            
+            if (isConnected) {
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                sendBtn.disabled = false;
+                typingBtn.disabled = false;
+                stopTypingBtn.disabled = false;
+                testBtn.disabled = false;
+            } else {
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                sendBtn.disabled = true;
+                typingBtn.disabled = true;
+                stopTypingBtn.disabled = true;
+                testBtn.disabled = true;
+            }
+        }
+        
+        function connectToClanChat() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const userId = document.getElementById('userId').value;
+            const clanId = document.getElementById('clanId').value;
+            
+            if (!userId || !clanId) {
+                alert('Please enter both User ID and Clan ID');
+                return;
+            }
+            
+            const wsUrl = `${apiUrl}/api/clans/ws?userId=${userId}&clanId=${clanId}`;
+            
+            log(`Connecting to: ${wsUrl}`, 'system');
+            updateStatus('Connecting...', 'connecting');
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    isConnected = true;
+                    updateStatus('Connected to Clan Chat', 'connected');
+                    updateButtons();
+                    log('✅ WebSocket connection established', 'system');
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`📥 Received: ${JSON.stringify(data, null, 2)}`, 'incoming');
+                        
+                        // Handle specific message types
+                        if (data.type === 'connection') {
+                            log(`🔗 ${data.message}`, 'system');
+                        } else if (data.type === 'chat') {
+                            log(`💬 Chat from ${data.userId}: ${data.content}`, 'incoming');
+                        } else if (data.type === 'typing') {
+                            log(`⌨️ ${data.userId} is ${data.isTyping ? 'typing' : 'not typing'}`, 'incoming');
+                        }
+                    } catch (error) {
+                        log(`❌ Error parsing message: ${error.message}`, 'error');
+                        log(`Raw data: ${event.data}`, 'error');
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    isConnected = false;
+                    updateStatus(`Disconnected (Code: ${event.code})`, 'disconnected');
+                    updateButtons();
+                    log(`❌ WebSocket connection closed: ${event.code} - ${event.reason}`, 'system');
+                };
+                
+                ws.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error.message}`, 'error');
+                    updateStatus('Connection Error', 'disconnected');
+                };
+                
+            } catch (error) {
+                log(`❌ Failed to create WebSocket: ${error.message}`, 'error');
+                updateStatus('Connection Failed', 'disconnected');
+            }
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close(1000, 'User disconnected');
+                ws = null;
+            }
+            isConnected = false;
+            updateStatus('Disconnected', 'disconnected');
+            updateButtons();
+            log('🔌 Disconnected from WebSocket', 'system');
+        }
+        
+        function sendChatMessage() {
+            if (!isConnected || !ws) {
+                log('❌ Not connected to WebSocket', 'error');
+                return;
+            }
+            
+            const content = document.getElementById('messageContent').value.trim();
+            if (!content) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            const message = {
+                type: 'chat_message', // Using the new message type
+                content: content,
+                clanId: document.getElementById('clanId').value,
+                messageType: 'TEXT'
+            };
+            
+            try {
+                ws.send(JSON.stringify(message));
+                log(`📤 Sent chat message: ${content}`, 'outgoing');
+                document.getElementById('messageContent').value = '';
+            } catch (error) {
+                log(`❌ Error sending message: ${error.message}`, 'error');
+            }
+        }
+        
+        function sendTypingIndicator(isTyping) {
+            if (!isConnected || !ws) {
+                log('❌ Not connected to WebSocket', 'error');
+                return;
+            }
+            
+            const message = {
+                type: 'typing_indicator', // Using the new message type
+                isTyping: isTyping,
+                clanId: document.getElementById('clanId').value
+            };
+            
+            try {
+                ws.send(JSON.stringify(message));
+                log(`📤 Sent typing indicator: ${isTyping ? 'started' : 'stopped'}`, 'outgoing');
+            } catch (error) {
+                log(`❌ Error sending typing indicator: ${error.message}`, 'error');
+            }
+        }
+        
+        function testMessageTypes() {
+            if (!isConnected || !ws) {
+                log('❌ Not connected to WebSocket', 'error');
+                return;
+            }
+            
+            const testMessages = [
+                {
+                    type: 'chat_message',
+                    content: 'Test message from enhanced client',
+                    clanId: document.getElementById('clanId').value,
+                    messageType: 'TEXT'
+                },
+                {
+                    type: 'typing_indicator',
+                    isTyping: true,
+                    clanId: document.getElementById('clanId').value
+                },
+                {
+                    type: 'read_receipt',
+                    messageId: 'test-message-123',
+                    clanId: document.getElementById('clanId').value
+                }
+            ];
+            
+            testMessages.forEach((msg, index) => {
+                setTimeout(() => {
+                    try {
+                        ws.send(JSON.stringify(msg));
+                        log(`🧪 Test message ${index + 1}: ${msg.type}`, 'outgoing');
+                    } catch (error) {
+                        log(`❌ Error sending test message: ${error.message}`, 'error');
+                    }
+                }, index * 1000); // Send each message 1 second apart
+            });
+            
+            // Stop typing after 3 seconds
+            setTimeout(() => {
+                if (isConnected && ws) {
+                    const stopTypingMsg = {
+                        type: 'typing_indicator',
+                        isTyping: false,
+                        clanId: document.getElementById('clanId').value
+                    };
+                    try {
+                        ws.send(JSON.stringify(stopTypingMsg));
+                        log('🧪 Test: Stopped typing', 'outgoing');
+                    } catch (error) {
+                        log(`❌ Error sending stop typing: ${error.message}`, 'error');
+                    }
+                }
+            }, 4000);
+        }
+        
+        function clearLog() {
+            document.getElementById('messageLog').innerHTML = '';
+            log('🗑️ Log cleared', 'system');
+        }
+        
+        // Initialize
+        updateButtons();
+        log('🧪 Enhanced WebSocket test client ready', 'system');
+        log('💡 This client tests your existing API Gateway + Clan Service infrastructure', 'system');
+        log('🔗 Connect to test the enhanced message handling', 'system');
+    </script>
+</body>
+</html>

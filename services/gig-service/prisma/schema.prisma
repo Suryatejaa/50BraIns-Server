@@ -1,0 +1,295 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+model Gig {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  postedById    String   // FK to user-service
+  postedByType  String   @default("user") // "user" or "brand"
+  
+  // Brand/User info (cached from user-service at creation time)
+  brandName     String?  // Display name (companyName > firstName lastName > username)
+  brandUsername String?  // Username from user-service
+  brandAvatar   String?  // Profile picture URL
+  brandVerified Boolean  @default(false) // Email verification status
+  budgetMin     Float?
+  budgetMax     Float?
+  experienceLevel String @default("intermediate")
+  budgetType    String   @default("fixed") // "fixed", "hourly", "negotiable"
+  roleRequired  String   // "editor", "dop", "influencer", "writer", etc.
+  skillsRequired String[] @default([])
+  isClanAllowed Boolean  @default(true)
+  location      String?  // "remote", "mumbai", "bangalore", etc.
+  duration      String?  // "1 day", "1 week", "1 month"
+  urgency       String   @default("normal") // "urgent", "normal", "flexible"
+  status        GigStatus // No default - will be set explicitly in controller
+  category      String   // "content-creation", "video-editing", "photography", etc.
+  deliverables  String[] @default([])
+  requirements  String?  // Additional requirements
+  deadline      DateTime?
+  assignedToId  String?  // User or Clan ID who got the gig
+  assignedToType String? // "user" or "clan"
+  completedAt   DateTime?
+  
+  // Gig type and address fields
+  gigType       GigType  @default(REMOTE) // "PRODUCT", "VISIT", "REMOTE"
+  address       String?  // Required when gigType is "VISIT"
+  latitude      Float?   // GPS latitude for exact location
+  longitude     Float?   // GPS longitude for exact location
+  
+  // Enhanced fields for frontend compatibility
+  maxApplications Int?     // Maximum number of applications allowed
+  platformRequirements String[] @default([]) // Required platforms (instagram, youtube, etc.)
+  tags          String[] @default([]) // Additional tags for the gig
+  followerRequirements Json[] @default([]) // Array of {platform: string, minFollowers: number}
+  locationRequirements String[] @default([]) // Geographic requirements
+  campaignDuration String? // Alternative duration field for campaigns
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  applications  Application[]
+  submissions   Submission[]
+  assignment    GigAssignment?
+
+  @@map("gigs")
+}
+
+model Application {
+  id            String    @id @default(cuid())
+  gigId         String
+  applicantId   String    // userId or clanId
+  applicantType String    // "user" or "clan" or "owner"
+  clanId        String?   // Required when applicantType is "clan"
+  proposal      String?   // Cover letter / proposal
+  quotedPrice   Float?    // If they want to negotiate price
+  estimatedTime String?   // How long they think it will take
+  portfolio     String[]  @default([]) // URLs to portfolio items
+  status        ApplicationStatus @default(PENDING)
+  upiId         String    // UPI Id to recevie payment
+  
+  // Address field for PRODUCT type gigs
+  address       String?   // Required when gig type is "PRODUCT"
+  latitude      Float?    // GPS latitude for exact location
+  longitude     Float?    // GPS longitude for exact location
+  
+  // Clan-specific fields
+  teamPlan      Json?     // {role: string, memberId: string, hours: number, deliverables: string[]}[]
+  milestonePlan Json?     // {title: string, dueAt: DateTime, amount: number, deliverables: string[]}[]
+  payoutSplit   Json?     // {memberId: string, percentage: number, fixedAmount?: number}[]
+  
+  appliedAt     DateTime  @default(now())
+  respondedAt   DateTime?
+  rejectionReason String? // Reason for rejection
+
+  // Relations
+  gig           Gig       @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  submissions   Submission[]
+  assignment    GigAssignment?
+
+  @@unique([applicantId, gigId])
+  @@map("applications")
+}
+
+model Submission {
+  id            String   @id @default(cuid())
+  gigId         String
+  applicationId String?  // Link to the application (optional)
+  submittedById String   // userId or clanId who submitted
+  submittedByType String // "user" or "clan"
+  title         String
+  description   String?
+  upiId         String
+  deliverables  String[] @default([]) // URLs to submitted files/deliverables
+  notes         String?  // Additional notes for the client
+  status        SubmissionStatus @default(PENDING)
+  submittedAt   DateTime @default(now())
+  reviewedAt    DateTime?
+  feedback      String?  // Client feedback
+  rating        Int?     // Rating 1-5 (when approved)
+
+  // Relations
+  gig           Gig      @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  application   Application? @relation(fields: [applicationId], references: [id])
+
+  @@map("submissions")
+}
+
+// Boost Event Tracking (from Credit Service events)
+model GigBoostEvent {
+  id           String   @id @default(cuid())
+  gigId        String   // Gig that was boosted
+  boosterId    String   // User who initiated the boost
+  amount       Float    // Credits spent on boost
+  duration     Int      // Boost duration in hours
+  eventId      String   @unique // Original event ID from credit service
+  isActive     Boolean  @default(true)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  
+  @@map("gigBoostEvents")
+  @@index([gigId])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+// Credit Events related to Gigs
+model GigCreditEvent {
+  id            String   @id @default(cuid())
+  gigId         String?  // Related gig (if applicable)
+  userId        String   // User involved in the transaction
+  eventType     String   // 'gig_boost', 'gig_payment', etc.
+  amount        Float    // Credit amount
+  description   String?  // Transaction description
+  eventId       String   @unique // Original event ID from credit service
+  metadata      Json?    // Additional event data
+  createdAt     DateTime @default(now())
+  
+  @@map("gigCreditEvents")
+  @@index([gigId])
+  @@index([userId])
+  @@index([eventType])
+}
+
+// New models for clan gig workflow
+model GigAssignment {
+  id            String   @id @default(cuid())
+  gigId         String   @unique
+  applicationId String?  @unique
+  assigneeType  String   // "user" or "clan"
+  assigneeId    String   // userId or clanId
+  clanId        String?  // Required when assigneeType is "clan"
+  
+  // Snapshot of plans at assignment time (immutable after assignment)
+  teamPlanSnapshot Json?     // Snapshot of teamPlan from application
+  milestonePlanSnapshot Json? // Snapshot of milestonePlan from application
+  payoutSplitSnapshot Json?   // Snapshot of payoutSplit from application
+  
+  status        GigAssignmentStatus @default(ACTIVE)
+  assignedAt    DateTime @default(now())
+  completedAt   DateTime?
+  
+  // Relations
+  gig           Gig        @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  application   Application? @relation(fields: [applicationId], references: [id])
+  milestones    GigMilestone[]
+  tasks        GigTask[]
+  
+  @@map("gigAssignments")
+}
+
+model GigMilestone {
+  id            String   @id @default(cuid())
+  gigId         String
+  assignmentId  String
+  title         String
+  description   String?
+  dueAt         DateTime
+  amount        Float    // Budget for this milestone
+  deliverables  String[] @default([]) // Expected deliverables
+  status        GigMilestoneStatus @default(PENDING)
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  paidAt        DateTime?
+  feedback      String?  // Brand feedback
+  
+  // Relations
+  assignment    GigAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  tasks        GigTask[]
+  
+  @@map("gigMilestones")
+}
+
+model GigTask {
+  id            String   @id @default(cuid())
+  gigId         String
+  assignmentId  String
+  milestoneId   String?
+  title         String
+  description   String?
+  assigneeUserId String  // Clan member assigned to this task
+  status        GigTaskStatus @default(TODO)
+  estimatedHours Float?
+  actualHours   Float?
+  deliverables  String[] @default([]) // Task-specific deliverables
+  notes         String?  // Internal notes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  assignment    GigAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  milestone    GigMilestone? @relation(fields: [milestoneId], references: [id])
+  
+  @@map("gigTasks")
+}
+
+enum GigStatus {
+  DRAFT      // Created but not published
+  OPEN       // Published and accepting applications
+  PAUSED     // Temporarily paused, not accepting applications
+  IN_REVIEW  // Reviewing applications
+  ASSIGNED   // Assigned to someone
+  IN_PROGRESS // Work is being done
+  SUBMITTED  // Work submitted, pending review
+  COMPLETED  // Successfully completed
+  CANCELLED  // Cancelled by poster
+  EXPIRED    // Deadline passed without completion
+}
+
+enum ApplicationStatus {
+  PENDING   // Application submitted, awaiting review
+  APPROVED  // Application approved, gig assigned
+  SUBMITTED // Work has been submitted by applicant
+  CLOSED    // Work approved by brand, application complete
+  REJECTED  // Application rejected
+  WITHDRAWN // Applicant withdrew their application
+}
+
+enum SubmissionStatus {
+  PENDING   // Submitted, awaiting review
+  APPROVED  // Work approved
+  REJECTED  // Work rejected, needs revision
+  REVISION  // Revision requested
+}
+
+enum GigAssignmentStatus {
+  ACTIVE     // Assignment is active and work is ongoing
+  COMPLETED  // All milestones completed and paid
+  CANCELLED  // Assignment was cancelled
+  ON_HOLD    // Assignment temporarily paused
+}
+
+enum GigMilestoneStatus {
+  PENDING    // Milestone not yet started
+  IN_PROGRESS // Work on milestone is ongoing
+  SUBMITTED  // Milestone delivered, awaiting approval
+  APPROVED   // Milestone approved, payment released
+  REJECTED   // Milestone rejected, needs revision
+  PAID       // Payment has been released
+}
+
+enum GigTaskStatus {
+  TODO       // Task assigned but not started
+  IN_PROGRESS // Task is being worked on
+  REVIEW     // Task completed, awaiting review
+  DONE       // Task approved and completed
+  BLOCKED    // Task blocked by dependencies
+}
+
+enum GigType {
+  PRODUCT    // Physical product delivery required
+  VISIT      // On-site visit required
+  REMOTE     // Remote work
+}

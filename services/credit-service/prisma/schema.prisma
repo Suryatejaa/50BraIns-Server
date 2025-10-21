@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+model CreditWallet {
+  id        String   @id @default(cuid())
+  ownerId   String   @unique // userId or clanId
+  ownerType String   // "user" | "clan"
+  balance   Int      @default(0)
+  totalEarned Int    @default(0) // Total credits ever earned
+  totalSpent  Int    @default(0) // Total credits ever spent
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  transactions CreditTransaction[]
+  boosts       BoostRecord[]
+
+  @@map("creditWallets")
+}
+
+model CreditTransaction {
+  id           String   @id @default(cuid())
+  walletId     String
+  type         TransactionType
+  amount       Int      // Positive for credit, negative for debit
+  balanceBefore Int     // Balance before this transaction
+  balanceAfter  Int     // Balance after this transaction
+  relatedId    String?  // gigId, userId, clanId, paymentId depending on type
+  relatedType  String?  // "gig", "user", "clan", "payment"
+  description  String?
+  metadata     Json?    // Additional data (payment gateway response, etc.)
+  status       TransactionStatus @default(COMPLETED)
+  createdAt    DateTime @default(now())
+
+  // Relations
+  wallet       CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("creditTransactions")
+}
+
+model BoostRecord {
+  id          String     @id @default(cuid())
+  walletId    String
+  boostType   BoostType
+  targetId    String     // userId, gigId, or clanId being boosted
+  targetType  String     // "user", "gig", "clan"
+  creditsCost Int
+  duration    Int        // Duration in hours
+  startTime   DateTime   @default(now())
+  endTime     DateTime   // When boost expires
+  isActive    Boolean    @default(true)
+  metadata    Json?      // Additional boost configuration
+  createdAt   DateTime   @default(now())
+
+  // Relations
+  wallet      CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("creditBoostRecords")
+}
+
+model CreditPackage {
+  id          String   @id @default(cuid())
+  name        String   // "Starter Pack", "Creator Pack", etc.
+  credits     Int      // Number of credits in pack
+  price       Float    // Price in rupees
+  discount    Float?   // Discount percentage if any
+  isActive    Boolean  @default(true)
+  description String?
+  metadata    Json?    // Additional package info
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("creditPackages")
+}
+
+model PaymentRecord {
+  id              String        @id @default(cuid())
+  userId          String        // Who made the payment
+  packageId       String?       // Which credit package was purchased
+  amount          Float         // Amount paid in rupees
+  credits         Int           // Credits received
+  paymentGateway  String        // "razorpay", "stripe", etc.
+  gatewayOrderId  String?       // Payment gateway order ID
+  gatewayPaymentId String?      // Payment gateway payment ID
+  status          PaymentStatus @default(PENDING)
+  paymentData     Json?         // Raw payment gateway response
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("creditPaymentRecords")
+}
+
+// Enums
+enum TransactionType {
+  PURCHASE      // Buying credits
+  BOOST_PROFILE // Boosting user profile
+  BOOST_GIG     // Boosting gig visibility
+  BOOST_CLAN    // Boosting clan visibility
+  CONTRIBUTION  // Contributing to clan pool
+  REFUND        // Refunding credits
+  BONUS         // Bonus credits from platform
+  TRANSFER      // Transfer between wallets (future feature)
+}
+
+enum BoostType {
+  PROFILE       // Boost user profile visibility
+  GIG           // Boost gig in feeds
+  CLAN          // Boost clan visibility
+}
+
+enum TransactionStatus {
+  PENDING       // Transaction initiated
+  COMPLETED     // Transaction successful
+  FAILED        // Transaction failed
+  CANCELLED     // Transaction cancelled
+  REFUNDED      // Transaction refunded
+}
+
+enum PaymentStatus {
+  PENDING       // Payment initiated
+  COMPLETED     // Payment successful
+  FAILED        // Payment failed
+  CANCELLED     // Payment cancelled
+  REFUNDED      // Payment refunded
+}

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clan Chat WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .connection-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        .connection-form input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            flex: 1;
+        }
+        .connection-form button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .connection-form button:hover {
+            background: #0056b3;
+        }
+        .connection-form button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .chat-container {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f8f9fa;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            max-width: 80%;
+        }
+        .message.own {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+        .message.other {
+            background: #e9ecef;
+            color: #212529;
+        }
+        .message.system {
+            background: #ffc107;
+            color: #212529;
+            text-align: center;
+            max-width: 100%;
+        }
+        .message .timestamp {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+        .message .user {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+            background: white;
+        }
+        .input-container input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .input-container button {
+            padding: 8px 16px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .input-container button:hover {
+            background: #218838;
+        }
+        .typing-indicator {
+            padding: 5px 10px;
+            font-style: italic;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        .stats h3 {
+            margin-top: 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏛️ Clan Chat WebSocket Test</h1>
+        
+        <div class="connection-form">
+            <input type="text" id="userId" placeholder="User ID" value="test-user-123">
+            <select id="clanSelect" onchange="changeClan()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; flex: 1;">
+                <option value="cmeeky5810001cekg1l822gob">Valid Test Clan (2 members)</option>
+                <option value="cmee0ea4j000117ba8cfwrw2w">My Clan (3 members)</option>
+                <option value="cmee0olr2000517baz8resmm7">My Clan 2 (2 members)</option>
+            </select>
+            <button id="connectBtn" onclick="connect()">Connect</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            <button id="createTestDataBtn" onclick="createTestData()" style="background: #17a2b8;">Create Test Data</button>
+                </div>
+        
+        <div style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 4px; border-left: 4px solid #2196f3;">
+            <h4 style="margin: 0 0 10px 0; color: #1976d2;">🧪 Test Users Available:</h4>
+            <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>test-user-123</strong> - Member of "Valid Test Clan"</li>
+                <li><strong>cf2e0a3f-df3b-4cfb-ada5-c3dc6aa32117</strong> - Admin of all clans</li>
+                <li><strong>a31ccb74-2479-441d-88f2-dc6701e181a4</strong> - Member of multiple clans</li>
+            </ul>
+        </div>
+        
+        <div id="status" class="status disconnected">
+            Disconnected
+        </div>
+
+        <div class="chat-container">
+            <div id="messages" class="messages">
+                <div class="message system">
+                    Welcome to Clan Chat! Connect to start chatting.
+                </div>
+            </div>
+            <div id="typingIndicator" class="typing-indicator" style="display: none;">
+                Someone is typing...
+            </div>
+            <div class="input-container">
+                <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+                <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <h3>Connection Statistics</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalConnections">0</div>
+                    <div class="stat-label">Total Connections</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="activeConnections">0</div>
+                    <div class="stat-label">Active Connections</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalClans">0</div>
+                    <div class="stat-label">Connected Clans</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalUsers">0</div>
+                    <div class="stat-label">Connected Users</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        let typingTimeout = null;
+
+        function changeClan() {
+            const clanSelect = document.getElementById('clanSelect');
+            const selectedClanId = clanSelect.value;
+            console.log('Selected clan:', selectedClanId);
+        }
+
+        function connect() {
+            const userId = document.getElementById('userId').value.trim();
+            const clanId = document.getElementById('clanSelect').value.trim();
+
+            if (!userId || !clanId) {
+                alert('Please enter both User ID and Clan ID');
+                return;
+            }
+
+            // Connect to WebSocket
+            const wsUrl = `ws://localhost:4003/ws?userId=${encodeURIComponent(userId)}&clanId=${encodeURIComponent(clanId)}`;
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    isConnected = true;
+                    updateStatus('Connected to clan chat', 'connected');
+                    updateConnectionControls(true);
+                    addMessage('System', 'Connected to clan chat!', 'system');
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                        addMessage('System', 'Error parsing message', 'system');
+                    }
+                };
+
+                ws.onclose = function(event) {
+                    isConnected = false;
+                    updateStatus(`Disconnected (Code: ${event.code})`, 'disconnected');
+                    updateConnectionControls(false);
+                    addMessage('System', 'Disconnected from clan chat', 'system');
+                };
+
+                ws.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    addMessage('System', 'WebSocket error occurred', 'system');
+                };
+
+            } catch (error) {
+                console.error('Connection error:', error);
+                addMessage('System', 'Failed to connect: ' + error.message, 'system');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'connection':
+                    addMessage('System', data.message, 'system');
+                    break;
+                case 'chat':
+                    const isOwnMessage = data.userId === document.getElementById('userId').value;
+                    addMessage(data.userId, data.content, isOwnMessage ? 'own' : 'other', data.timestamp);
+                    break;
+                case 'typing':
+                    if (data.userId !== document.getElementById('userId').value) {
+                        showTypingIndicator(data.userId);
+                    }
+                    break;
+                case 'recent_messages':
+                    if (data.messages && data.messages.length > 0) {
+                        data.messages.forEach(msg => {
+                            const isOwnMessage = msg.userId === document.getElementById('userId').value;
+                            addMessage(msg.userId, msg.content, isOwnMessage ? 'own' : 'other', msg.createdAt);
+                        });
+                    }
+                    break;
+                case 'system':
+                    addMessage('System', data.content, 'system', data.timestamp);
+                    break;
+                default:
+                    console.log('Unknown message type:', data);
+            }
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const content = messageInput.value.trim();
+            
+            if (!content || !ws || !isConnected) return;
+
+            const message = {
+                type: 'chat',
+                content: content,
+                messageType: 'TEXT'
+            };
+
+            ws.send(JSON.stringify(message));
+            messageInput.value = '';
+        }
+
+        function addMessage(userId, content, type, timestamp) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const userSpan = document.createElement('div');
+            userSpan.className = 'user';
+            userSpan.textContent = userId === 'SYSTEM' ? 'System' : userId;
+            
+            const contentSpan = document.createElement('div');
+            contentSpan.textContent = content;
+            
+            messageDiv.appendChild(userSpan);
+            messageDiv.appendChild(contentSpan);
+            
+            if (timestamp) {
+                const timeSpan = document.createElement('div');
+                timeSpan.className = 'timestamp';
+                timeSpan.textContent = new Date(timestamp).toLocaleTimeString();
+                messageDiv.appendChild(timeSpan);
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showTypingIndicator(userId) {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.textContent = `${userId} is typing...`;
+            indicator.style.display = 'block';
+            
+            // Clear typing indicator after 3 seconds
+            if (typingTimeout) {
+                clearTimeout(typingTimeout);
+            }
+            typingTimeout = setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 3000);
+        }
+
+        function updateStatus(message, className) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${className}`;
+        }
+
+        function updateConnectionControls(connected) {
+            document.getElementById('connectBtn').disabled = connected;
+            document.getElementById('disconnectBtn').disabled = !connected;
+            document.getElementById('messageInput').disabled = !connected;
+            document.getElementById('sendBtn').disabled = !connected;
+        }
+
+        // Handle Enter key in message input
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Handle typing indicator
+        document.getElementById('messageInput').addEventListener('input', function() {
+            if (isConnected && ws) {
+                const typingMessage = {
+                    type: 'typing',
+                    isTyping: true
+                };
+                ws.send(JSON.stringify(typingMessage));
+            }
+        });
+
+        // Update stats periodically
+        function updateStats() {
+            if (isConnected) {
+                fetch('/health/websocket')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.websocket && data.websocket.connections) {
+                            const stats = data.websocket.connections;
+                            document.getElementById('totalConnections').textContent = stats.totalConnections || 0;
+                            document.getElementById('activeConnections').textContent = stats.activeConnections || 0;
+                            document.getElementById('totalClans').textContent = (stats.clans || []).length;
+                            document.getElementById('totalUsers').textContent = (stats.users || []).length;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching stats:', error);
+                    });
+            }
+        }
+
+        // Update stats every 5 seconds
+        setInterval(updateStats, 5000);
+
+        // Initial stats update
+        updateStats();
+
+        // Function to create test data
+        async function createTestData() {
+            try {
+                const button = document.getElementById('createTestDataBtn');
+                button.disabled = true;
+                button.textContent = 'Creating...';
+
+                // Create test clan
+                const clanResponse = await fetch('/clans', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: 'Test Clan for Chat',
+                        description: 'A test clan for testing WebSocket chat functionality',
+                        tagline: 'Testing Chat Features',
+                        visibility: 'PUBLIC',
+                        primaryCategory: 'Technology',
+                        location: 'Test City',
+                        headId: 'test-user-123'
+                    })
+                });
+
+                if (clanResponse.ok) {
+                    const clanData = await clanResponse.json();
+                    console.log('✅ Test clan created:', clanData);
+                    
+                    // Update the clan ID input with the created clan ID
+                    document.getElementById('clanId').value = clanData.data.id;
+                    
+                    addMessage('System', `Test clan created with ID: ${clanData.data.id}`, 'system');
+                } else {
+                    const errorData = await clanResponse.json();
+                    console.error('❌ Failed to create clan:', errorData);
+                    addMessage('System', `Failed to create clan: ${errorData.error}`, 'system');
+                }
+
+            } catch (error) {
+                console.error('❌ Error creating test data:', error);
+                addMessage('System', `Error creating test data: ${error.message}`, 'system');
+            } finally {
+                const button = document.getElementById('createTestDataBtn');
+                button.disabled = false;
+                button.textContent = 'Create Test Data';
+            }
+        }
+    </script>
+</body>
+</html>

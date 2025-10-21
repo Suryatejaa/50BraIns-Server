@@ -1,0 +1,47 @@
+{
+  "name": "work-history-service",
+  "version": "1.0.0",
+  "description": "Work History Service - Source of truth for creator achievements and portfolio tracking",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --env-file=.env.production index.js",
+    "dev": "nodemon --env-file=.env.local index.js",
+    "test": "jest",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:reset": "prisma migrate reset",
+    "prisma:studio": "prisma studio"
+  },
+  "keywords": [
+    "work-history",
+    "portfolio",
+    "achievements",
+    "reputation",
+    "source-of-truth"
+  ],
+  "author": "50BraIns Team",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^6.17.1",
+    "amqplib": "^0.10.3",
+    "axios": "^1.4.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^6.7.0",
+    "helmet": "^7.0.0",
+    "joi": "^17.9.2",
+    "jsonwebtoken": "^9.0.1",
+    "lodash": "^4.17.21",
+    "morgan": "^1.10.0",
+    "prisma": "^6.17.1",
+    "redis": "^4.6.7",
+    "uuid": "^9.0.0",
+    "winston": "^3.9.0"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^6.3.3"
+  }
+}

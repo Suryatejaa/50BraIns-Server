@@ -1,0 +1,401 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+/// Clan feed/activity posts
+model ClanActivity {
+  id           String   @id @default(cuid())
+  clanId       String
+  userId       String
+  type         String   // announcement, gig, help, poll
+  content      String
+  attachments  String[] @default([]) // file/image URLs
+  pollOptions  String[] @default([]) // only used if type = poll
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isPinned     Boolean  @default(false)
+
+  // Relations
+  clan         Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+  votes        ClanActivityVote[]
+
+  @@index([clanId])
+  @@index([createdAt])
+  @@index([isPinned, createdAt])
+  @@map("clan_activities")
+}
+
+/// Individual votes for poll-type activities
+model ClanActivityVote {
+  id         String   @id @default(cuid())
+  activityId String
+  userId     String
+  optionIndex Int
+  createdAt  DateTime @default(now())
+
+  activity   ClanActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, userId])
+  @@index([activityId])
+  @@map("clan_activity_votes")
+}
+
+model Clan {
+  id               String            @id @default(cuid())
+  name             String
+  slug             String            @unique
+  description      String?
+  tagline          String?
+  visibility       ClanVisibility    @default(PUBLIC)
+  isActive         Boolean           @default(true)
+  isVerified       Boolean           @default(false)
+  clanHeadId       String
+  email            String?
+  website          String?
+  instagramHandle  String?
+  twitterHandle    String?
+  linkedinHandle   String?
+  requiresApproval Boolean           @default(true)
+  isPaidMembership Boolean           @default(false)
+  membershipFee    Float?
+  maxMembers       Int               @default(50)
+  primaryCategory  String?
+  categories       String[]          @default([])
+  skills           String[]          @default([])
+  location         String?
+  timezone         String?
+  totalGigs        Int               @default(0)
+  completedGigs    Int               @default(0)
+  totalRevenue     Float             @default(0)
+  averageRating    Float             @default(0)
+  reputationScore  Int               @default(0)
+  portfolioImages  String[]          @default([])
+  portfolioVideos  String[]          @default([])
+  showcaseProjects String[]          @default([])
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  analytics        ClanAnalytics?
+  invitations      ClanInvitation[]
+  joinRequests     ClanJoinRequest[]
+  members          ClanMember[]
+  portfolio        ClanPortfolio[]
+  reviews          ClanReview[]
+  activities       ClanActivity[]
+  workPackages    ClanWorkPackage[]
+  memberAgreements MemberAgreement[]
+
+  @@index([visibility])
+  @@index([primaryCategory])
+  @@index([reputationScore])
+  @@index([clanHeadId])
+  @@map("clans")
+}
+
+model ClanMember {
+  id                String           @id @default(cuid())
+  userId            String
+  clanId            String
+  role              ClanRole         @default(MEMBER)
+  customRole        String?
+  permissions       ClanPermission[] @default([])
+  status            MemberStatus     @default(ACTIVE)
+  isCore            Boolean          @default(false)
+  gigsParticipated  Int              @default(0)
+  revenueGenerated  Float            @default(0)
+  contributionScore Int              @default(0)
+  joinedAt          DateTime         @default(now())
+  lastActiveAt      DateTime         @default(now())
+  clan              Clan             @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clanId])
+  @@index([userId])
+  @@index([clanId])
+  @@index([status])
+  @@map("clan_members")
+}
+
+model ClanInvitation {
+  id              String           @id @default(cuid())
+  clanId          String
+  invitedUserId   String
+  invitedByUserId String
+  invitedEmail    String?
+  role            ClanRole         @default(MEMBER)
+  customRole      String?
+  message         String?
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  respondedAt     DateTime?
+  clan            Clan             @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@index([invitedUserId])
+  @@index([clanId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("clan_invitations")
+}
+
+model ClanJoinRequest {
+  id            String        @id @default(cuid())
+  clanId        String
+  userId        String
+  message       String?
+  requestedRole ClanRole      @default(MEMBER)
+  portfolio     String?
+  status        RequestStatus @default(PENDING)
+  reviewedBy    String?
+  reviewMessage String?
+  createdAt     DateTime      @default(now())
+  reviewedAt    DateTime?
+  clan          Clan          @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clanId])
+  @@index([userId])
+  @@index([clanId])
+  @@index([status])
+  @@map("clan_join_requests")
+}
+
+model ClanAnalytics {
+  id                  String   @id @default(cuid())
+  clanId              String   @unique
+  profileViews        Int      @default(0)
+  searchAppearances   Int      @default(0)
+  contactClicks       Int      @default(0)
+  gigApplications     Int      @default(0)
+  gigWinRate          Float    @default(0)
+  averageProjectValue Float    @default(0)
+  clientRetentionRate Float    @default(0)
+  memberGrowthRate    Float    @default(0)
+  memberRetentionRate Float    @default(0)
+  teamProductivity    Float    @default(0)
+  marketRanking       Int?
+  categoryRanking     Int?
+  localRanking        Int?
+  socialEngagement    Float    @default(0)
+  referralCount       Int      @default(0)
+  lastCalculatedAt    DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  clan                Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@map("clan_analytics")
+}
+
+model ClanPortfolio {
+  id           String             @id @default(cuid())
+  clanId       String
+  title        String
+  description  String?
+  mediaType    PortfolioMediaType
+  mediaUrl     String
+  thumbnailUrl String?
+  projectType  String?
+  clientName   String?
+  projectDate  DateTime?
+  projectValue Float?
+  tags         String[]           @default([])
+  skills       String[]           @default([])
+  isPublic     Boolean            @default(true)
+  isFeatured   Boolean            @default(false)
+  views        Int                @default(0)
+  likes        Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  clan         Clan               @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@index([clanId])
+  @@index([mediaType])
+  @@index([isPublic])
+  @@index([isFeatured])
+  @@map("clan_portfolio")
+}
+
+model ClanReview {
+  id                    String   @id @default(cuid())
+  clanId                String
+  reviewerId            String
+  rating                Int
+  title                 String?
+  content               String
+  communicationRating   Int?
+  qualityRating         Int?
+  timelinessRating      Int?
+  professionalismRating Int?
+  projectId             String?
+  projectType           String?
+  isVerified            Boolean  @default(false)
+  isPublic              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  clan                  Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@index([clanId])
+  @@index([reviewerId])
+  @@index([rating])
+  @@index([isPublic])
+  @@map("clan_reviews")
+}
+
+// Boost Event Tracking (from Credit Service events)
+model ClanBoostEvent {
+  id           String   @id @default(cuid())
+  clanId       String   // Clan that was boosted
+  boosterId    String   // User who initiated the boost
+  amount       Float    // Credits spent on boost
+  duration     Int      // Boost duration in hours
+  eventId      String   @unique // Original event ID from credit service
+  isActive     Boolean  @default(true)
+  expiresAt    DateTime
+  createdAt     DateTime @default(now())
+  
+  @@map("clan_boost_events")
+  @@index([clanId])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+// Credit Events related to Clans
+model ClanCreditEvent {
+  id            String   @id @default(cuid())
+  clanId        String?  // Related clan (if applicable)
+  userId        String   // User involved in the transaction
+  eventType     String   // 'clan_boost', 'clan_contribution', etc.
+  amount        Float    // Credit amount
+  description   String?  // Transaction description
+  eventId       String   @unique // Original event ID from credit service
+  metadata      Json?    // Additional event data
+  createdAt     DateTime @default(now())
+  
+  @@map("clan_credit_events")
+  @@index([clanId])
+  @@index([userId])
+  @@index([eventType])
+}
+
+// New models for clan gig workflow
+model ClanWorkPackage {
+  id            String   @id @default(cuid())
+  gigId         String   // Reference to gig in gig-service
+  clanId        String
+  title         String
+  description   String?
+  assigneeUserId String  // Clan member assigned to this work package
+  status        ClanWorkPackageStatus @default(TODO)
+  estimatedHours Float?
+  actualHours   Float?
+  deliverables  String[] @default([]) // Work package deliverables
+  notes         String?  // Internal notes
+  dueDate       DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  clan          Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+  
+  @@index([clanId])
+  @@index([gigId])
+  @@index([assigneeUserId])
+  @@map("clan_work_packages")
+}
+
+model MemberAgreement {
+  id            String   @id @default(cuid())
+  clanId        String
+  userId        String
+  gigId         String   // Reference to gig in gig-service
+  role          String   // Role in the gig
+  expectedHours Float?   // Expected hours for this gig
+  deliverables  String[] @default([]) // Expected deliverables
+  payoutPercentage Float? // Percentage of gig payment
+  payoutFixedAmount Float? // Fixed amount for this gig
+  status        MemberAgreementStatus @default(PENDING)
+  acceptedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  clan          Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+  
+  @@unique([clanId, userId, gigId])
+  @@index([clanId])
+  @@index([gigId])
+  @@index([userId])
+  @@map("member_agreements")
+}
+
+enum ClanVisibility {
+  PUBLIC
+  PRIVATE
+  INVITE_ONLY
+}
+
+enum ClanRole {
+  HEAD
+  CO_HEAD
+  ADMIN
+  SENIOR_MEMBER
+  MEMBER
+  TRAINEE
+}
+
+enum ClanPermission {
+  INVITE_MEMBERS
+  REMOVE_MEMBERS
+  EDIT_CLAN_INFO
+  MANAGE_PORTFOLIO
+  APPLY_TO_GIGS
+  MANAGE_FINANCES
+  VIEW_ANALYTICS
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  LEFT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PortfolioMediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  LINK
+}
+
+enum ClanWorkPackageStatus {
+  TODO       // Work package assigned but not started
+  IN_PROGRESS // Work package is being worked on
+  REVIEW     // Work package completed, awaiting review
+  DONE       // Work package approved and completed
+  BLOCKED    // Work package blocked by dependencies
+}
+
+enum MemberAgreementStatus {
+  PENDING    // Agreement sent, awaiting member acceptance
+  ACCEPTED   // Member accepted the agreement
+  DECLINED   // Member declined the agreement
+  EXPIRED    // Agreement expired without response
+}

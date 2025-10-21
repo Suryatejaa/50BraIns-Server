@@ -1,0 +1,17 @@
+{
+  "firstName": "Sarah",
+  "lastName": "Marketing",
+  "email": "sarah@brandcompany.com",
+  "password": "BrandPass123!",
+  "roles": "BRAND",
+  "phone": "9123456789",
+  "location": "Delhi, India",
+  "companyName": "Brand Company Ltd",
+  "companyType": "startup",
+  "industry": "E-commerce",
+  "marketingBudget": "2lakh-10lakh",
+  "targetAudience": ["millennials", "fashion-conscious", "urban"],
+  "campaignTypes": ["product-launch", "brand-awareness"],
+  "designationTitle": "Marketing Manager",
+  "companyWebsite": "https://brandcompany.com"
+}

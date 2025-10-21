@@ -1,0 +1,10 @@
+const express = require('express');
+const router = express.Router();
+const gigController = require('../controllers/gigController');
+const { requireAuth, asyncHandler } = require('../middleware');
+
+// Submission routes
+// POST /submissions/:id/review - Review a submission (approve/reject/request revision)
+router.post('/:id/review', requireAuth, asyncHandler(gigController.reviewSubmission));
+
+module.exports = router;

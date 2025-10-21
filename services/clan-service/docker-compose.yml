@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  clan-service-v1:
+    build:
+      context: .
+      dockerfile: Dockerfile-simplified
+    ports:
+      - "4003:4003"
+    environment:
+      - PORT=4003
+      - DATABASE_URL=postgresql://clan_user:clan_password@clan-db:5432/clan_db
+      - NODE_ENV=development
+    depends_on:
+      clan-db:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  clan-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=clan_db
+      - POSTGRES_USER=clan_user
+      - POSTGRES_PASSWORD=clan_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - clan_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clan_user -d clan_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  clan_data:

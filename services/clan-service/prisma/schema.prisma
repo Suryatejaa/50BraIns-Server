@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+// Clan model matching frontend types
+model Clan {
+  id               String        @id @default(cuid())
+  name             String
+  description      String?
+  tagline          String?
+  visibility       String        @default("PUBLIC") // PUBLIC, PRIVATE, INVITE_ONLY
+  isVerified       Boolean       @default(false)
+  isActive         Boolean       @default(true)
+  email            String?
+  website          String?
+  instagramHandle  String?
+  twitterHandle    String?
+  linkedinHandle   String?
+  requiresApproval Boolean       @default(true)
+  isPaidMembership Boolean       @default(false)
+  membershipFee    Float?
+  maxMembers       Int           @default(255) // WhatsApp-like max members
+  primaryCategory  String        @default("General")
+  categories       String[]      @default([])
+  skills           String[]      @default([])
+  location         String?
+  timezone         String?
+  memberCount      Int           @default(1)
+  reputationScore  Int           @default(0)
+  portfolioImages  String[]      @default([])
+  portfolioVideos  String[]      @default([])
+  showcaseProjects String[]      @default([])
+  headId           String        // Clan owner/head ID (renamed from clanHeadId)
+  admins           String[]      @default([]) // Array of admin user IDs
+  memberIds        String[]      @default([]) // Array of current member user IDs for quick access
+  pendingRequests  String[]      @default([]) // Array of user IDs requesting to join
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  // Relations
+  members          ClanMember[]
+  messages         ClanMessage[]
+
+  @@index([reputationScore])
+  @@index([primaryCategory])
+  @@index([isActive])
+  @@index([visibility])
+  @@index([location])
+  @@map("clans")
+}
+
+// Clan membership
+model ClanMember {
+  id         String      @id @default(cuid())
+  userId     String      // User ID from user service
+  clanId     String
+  role       String      @default("MEMBER") // OWNER, ADMIN, MEMBER
+  status     String      @default("ACTIVE") // ACTIVE, INACTIVE
+  joinedAt   DateTime    @default(now())
+
+  // Relations
+  clan       Clan        @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clanId])
+  @@index([userId])
+  @@index([clanId])
+  @@index([status])
+  @@map("clanMembers")
+}
+
+// Clan messages (chat + gig sharing)
+model ClanMessage {
+  id           String   @id @default(cuid())
+  clanId       String
+  userId       String   // User ID from user service
+  content      String
+  messageType  String   @default("TEXT") // TEXT, GIG_SHARE, ANNOUNCEMENT
+  metadata     Json?    // For gig sharing: { gigId, gigTitle, gigDescription, gigUrl }
+  createdAt    DateTime @default(now())
+  
+  // Client message ID for deduplication
+  clientMessageId String? @unique // Unique client-generated message ID
+  
+  // New fields for delivery status
+  isDelivered  Boolean  @default(false)
+  deliveredAt  DateTime?
+  
+  // Read receipts tracking
+  readBy       Json[]   @default([]) // Array of user IDs who read the message
+  readAt       Json[]   @default([]) // Array of timestamps when each user read
+  
+  // Soft delete
+  isDeleted    Boolean  @default(false)
+  deletedAt    DateTime?
+  deletedBy    String?  // User ID who deleted the message
+
+  // Relations
+  clan         Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@index([clanId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([isDeleted])
+  @@index([clientMessageId])
+  @@map("clanMessages")
+}

@@ -1,0 +1,51 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SocialMediaAccount {
+  id          String   @id @default(cuid())
+  userId      String
+  platform    String   // instagram, youtube, twitter, linkedin, tiktok
+  username    String   // The user's handle/username on the platform
+  profileUrl  String   @unique
+  followers   Int      @default(0)
+  following   Int      @default(0)
+  posts       Int      @default(0)
+  engagement  Float?   // engagement rate as percentage
+  verified    Boolean  @default(false)
+  lastSynced  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  snapshots SocialMediaSnapshot[]
+
+  @@unique([userId, platform])
+  @@index([userId])
+  @@index([platform])
+  @@index([followers])
+}
+
+model SocialMediaSnapshot {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     SocialMediaAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  followers   Int
+  following   Int
+  posts       Int
+  engagement  Float?
+  
+  // Platform-specific metrics stored as JSON
+  platformMetrics Json?
+  
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([createdAt])
+}

@@ -1,0 +1,41 @@
+{
+  "email": "alex.videoeditor@example.com",
+  "password": "CrewPass123!",
+  "confirmPassword": "CrewPass123!",
+  "firstName": "Alex",
+  "lastName": "Rodriguez",
+  "phone": "9567890123",
+  "location": "Goa, India",
+  "roles": "CREW",
+  "bio": "Professional video editor and motion graphics designer with 5+ years experience in digital content creation",
+  "website": "https://alexrodriguez.portfolio.com",
+  "instagramHandle": "alex_edits",
+  "youtubeHandle": "AlexEditingTutorials",
+  "linkedinHandle": "alex-rodriguez-editor",
+  "crewSkills": [
+    "video editing",
+    "motion graphics",
+    "color grading",
+    "sound design",
+    "visual effects"
+  ],
+  "experienceLevel": "advanced",
+  "equipmentOwned": [
+    "Professional Camera (Canon 5D Mark IV)",
+    "DJI Mavic Air 2 (Drone)",
+    "Audio Equipment (Rode Microphones)",
+    "Lighting Kit (Godox)",
+    "MacBook Pro (Video Editing Setup)"
+  ],
+  "portfolioUrl": "https://alexrodriguez.portfolio.com",
+  "hourlyRate": 2500,
+  "availability": "freelance",
+  "workStyle": "hybrid",
+  "specializations": [
+    "music videos",
+    "commercial ads",
+    "social media content",
+    "documentary editing",
+    "wedding films"
+  ]
+}

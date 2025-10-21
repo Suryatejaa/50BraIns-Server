@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+// REPUTATION SERVICE SPECIFIC TABLES
+
+// Core Reputation Model - The Master Score
+model ReputationScore {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  totalScore            Int      @default(0)
+  reliabilityScore      Int      @default(0)
+  qualityScore          Int      @default(0)
+  communicationScore    Int      @default(0)
+  timelinessScore       Int      @default(0)
+  overallRating         Float?   @default(0)
+  totalGigs             Int      @default(0)
+  completedGigs         Int      @default(0)
+  cancelledGigs         Int      @default(0)
+  avgDeliveryTime       Float?   @default(0)
+  onTimeDeliveryRate    Float?   @default(0)
+  clientSatisfactionRate Float?  @default(0)
+  responseTime          Float?   @default(0)
+  level                 String   @default("NEWCOMER")
+  rank                  Int?     @default(0)
+  badges                String[] @default([])
+  lastUpdated           DateTime @default(now())
+  createdAt             DateTime @default(now())
+  
+  // Relations
+  scoreHistory          ScoreHistory[]
+  activityLogs          ActivityLog[]
+  
+  @@index([userId])
+  @@index([totalScore])
+  @@index([level])
+  @@map("reputationScores")
+}
+
+// Clan Reputation - Aggregate of Member Scores
+model ClanReputation {
+  id                    String   @id @default(cuid())
+  clanId                String   @unique
+  totalScore            Int      @default(0)
+  avgMemberScore        Float?   @default(0)
+  totalGigs             Int      @default(0)
+  successRate           Float?   @default(0)
+  teamworkScore         Int      @default(0)
+  leadershipScore       Int      @default(0)
+  badges                String[] @default([])
+  level                 String   @default("NEWCOMER")
+  rank                  Int?     @default(0)
+  lastUpdated           DateTime @default(now())
+  createdAt             DateTime @default(now())
+  
+  @@index([clanId])
+  @@index([totalScore])
+  @@map("reputationClanReputations")
+}
+
+// Score History - Track Changes Over Time
+model ScoreHistory {
+  id              String   @id @default(cuid())
+  userId          String?
+  clanId          String?
+  eventType       String
+  scoreChange     Int
+  newScore        Int
+  reason          String
+  relatedId       String?
+  relatedType     String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  reputationScore ReputationScore? @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([eventType])
+  @@map("reputationScoreHistory")
+}
+
+// Activity Log - Detailed Event Tracking
+model ActivityLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  clanId          String?
+  action          String
+  impact          String
+  pointsAwarded   Int      @default(0)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  reputationScore ReputationScore? @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([action])
+  @@map("reputationActivityLogs")
+}
+
+// Leaderboard Cache - Pre-computed Rankings
+model LeaderboardCache {
+  id              String   @id @default(cuid())
+  period          String
+  category        String
+  userId          String?
+  clanId          String?
+  score           Int
+  rank            Int
+  metadata        Json?
+  calculatedAt    DateTime @default(now())
+  
+  @@index([period, category])
+  @@map("reputationLeaderboardCache")
+}
+
+// Score Configuration - Dynamic Scoring Rules
+model ScoreConfig {
+  id                String   @id @default(cuid())
+  eventType         String
+  basePoints        Int
+  multiplier        Float    @default(1)
+  maxPoints         Int?
+  minPoints         Int?
+  isActive          Boolean  @default(true)
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([eventType])
+  @@map("reputationScoreConfig")
+}
+
+// Temporarily commented out enum until database is updated
+// enum ReputationTier {
+//   BRONZE
+//   SILVER
+//   GOLD
+//   PLATINUM
+//   DIAMOND
+//   LEGEND
+// }

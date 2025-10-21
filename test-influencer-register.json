@@ -1,0 +1,14 @@
+{
+  "firstName": "Alex",
+  "lastName": "Creator",
+  "email": "alex.creator@example.com",
+  "password": "TestPass123!",
+  "roles": "INFLUENCER",
+  "phone": "9876543210",
+  "location": "Mumbai, India",
+  "contentCategories": ["fashion", "lifestyle", "travel"],
+  "primaryNiche": "fashion",
+  "primaryPlatform": "instagram",
+  "instagramHandle": "alexcreator",
+  "bio": "Fashion and lifestyle content creator"
+}

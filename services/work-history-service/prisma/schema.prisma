@@ -1,0 +1,209 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/work-history-client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+// Work records represent completed work items
+model WorkRecord {
+  id                String   @id @default(uuid())
+  userId            String
+  gigId             String
+  clientId          String
+  
+  // Basic work information
+  title             String
+  description       String?
+  category          String
+  skills            String[] // Array of skills used
+  
+  // Completion details
+  completedAt       DateTime
+  deliveryTime      Int      // Days taken to complete
+  budgetRange       String   // "0-100", "100-500", etc.
+  actualBudget      Float?   // If disclosed by client
+  
+  // Quality metrics
+  clientRating      Float?   // 1-5 stars from client
+  clientFeedback    String?
+  onTimeDelivery    Boolean  @default(false)
+  withinBudget      Boolean  @default(true)
+  
+  // Portfolio items
+  portfolioItems    PortfolioItem[]
+  
+  // Verification
+  verified          Boolean  @default(false)
+  verifiedBy        String?  // Admin or system
+  verificationDate  DateTime?
+  
+  // Metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("workRecords")
+}
+
+// Portfolio items linked to work records
+model PortfolioItem {
+  id              String     @id @default(uuid())
+  workRecordId    String
+  workRecord      WorkRecord @relation(fields: [workRecordId], references: [id], onDelete: Cascade)
+  
+  // Item details
+  title           String
+  description     String?
+  type            String     // "image", "video", "document", "link", "code"
+  url             String     // URL to the item
+  thumbnailUrl    String?    // Thumbnail for images/videos
+  
+  // Metadata
+  fileSize        Int?       // In bytes
+  format          String?    // File format
+  isPublic        Boolean    @default(true)
+  displayOrder    Int        @default(0)
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  
+  @@map("workPortfolioItems")
+}
+
+// Achievement tracking
+model Achievement {
+  id              String   @id @default(uuid())
+  userId         String
+  
+  // Achievement details
+  type            String   // "milestone", "badge", "certification", "streak"
+  title           String
+  description     String
+  category        String?  // "delivery", "quality", "volume", "specialty"
+  
+  // Achievement data
+  metric          String?  // What was measured
+  value           Float?   // Achievement value
+  threshold       Float?   // Threshold met
+  
+  // Visual representation
+  iconUrl         String?
+  badgeUrl        String?
+  color           String?
+  
+  // Verification
+  verified        Boolean  @default(false)
+  verifiedBy      String?
+  
+  // Dates
+  achievedAt      DateTime
+  expiresAt       DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("workAchievements")
+}
+
+// Skill proficiency tracking
+model SkillProficiency {
+  id              String   @id @default(uuid())
+  userId         String
+  skill           String
+  
+  // Proficiency metrics
+  level           String   // "beginner", "intermediate", "advanced", "expert"
+  score           Float    // 0-100 calculated score
+  projectCount    Int      @default(0)
+  totalRating     Float    @default(0)
+  averageRating   Float    @default(0)
+  
+  // Recent activity
+  lastUsed        DateTime?
+  recentProjects  String[] // Recent project IDs
+  
+  // Growth tracking
+  improvementRate Float    @default(0) // Improvement over time
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, skill])
+  @@map("workSkillProficiencies")
+}
+
+// Work statistics and summaries
+model WorkSummary {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  
+  // Volume metrics
+  totalProjects         Int      @default(0)
+  activeProjects        Int      @default(0)
+  completedProjects     Int      @default(0)
+  
+  // Quality metrics
+  averageRating         Float    @default(0)
+  totalRatings          Int      @default(0)
+  fiveStarCount         Int      @default(0)
+  fourStarCount         Int      @default(0)
+  
+  // Delivery metrics
+  onTimeDeliveryRate    Float    @default(0)
+  averageDeliveryTime   Float    @default(0)
+  fastestDelivery       Int?     // Days
+  
+  // Financial metrics (if available)
+  totalEarnings         Float    @default(0)
+  averageProjectValue   Float    @default(0)
+  highestProjectValue   Float    @default(0)
+    
+  // Streak tracking
+  currentStreak         Int      @default(0)
+  longestStreak         Int      @default(0)
+  lastCompletionDate    DateTime?
+  
+  // Specialization
+  topSkills             String[] // Top 5 skills
+  topCategories         String[] // Top categories
+  
+  // Recent activity
+  lastActiveDate        DateTime?
+  projectsThisMonth     Int      @default(0)
+  projectsThisYear      Int      @default(0)
+  
+  // Verification status
+  verificationLevel     String   @default("unverified") // "unverified", "basic", "verified", "premium"
+  verifiedProjectCount  Int      @default(0)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@map("workSummaries")
+}
+
+// Event tracking for audit trail
+model WorkEvent {
+  id          String   @id @default(uuid())
+  userId      String
+  workRecordId String?
+  
+  // Event details
+  eventType   String   // "project_completed", "rating_received", "achievement_earned", etc.
+  eventData   Json     // Flexible event data
+  source      String   // "gig_service", "user_service", "system", etc.
+  
+  // Impact tracking
+  reputationImpact Float? // Impact on reputation score
+  
+  createdAt   DateTime @default(now())
+  
+  @@map("workEvents")
+}

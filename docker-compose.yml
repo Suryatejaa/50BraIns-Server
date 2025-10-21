@@ -1,0 +1,172 @@
+version: '3.8'
+
+networks:
+  50brains-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+  # =============================================================================
+  # INFRASTRUCTURE SERVICES
+  # =============================================================================
+  
+  postgres:
+    image: postgres:15-alpine
+    container_name: 50brains-postgres
+    environment:
+      POSTGRES_USER: brains_user
+      POSTGRES_PASSWORD: brains_password
+      POSTGRES_DB: brains_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - 50brains-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brains_user -d brains_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: 50brains-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - 50brains-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP protocol
+      - "15672:15672" # Management UI
+    networks:
+      - 50brains-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+  # =============================================================================
+  # APPLICATION SERVICES
+  # =============================================================================
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: 50brains-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=docker
+      - PORT=3000
+      - ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
+    depends_on:
+      auth-service:
+        condition: service_started
+    networks:
+      - 50brains-network
+    volumes:
+      - ./api-gateway/src:/app/src
+      - ./api-gateway/package.json:/app/package.json
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: 50brains-auth
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=docker
+      - PORT=4001
+      - DATABASE_URL=postgresql://brains_user:brains_password@postgres:5432/brains_db?schema=auth
+      - JWT_SECRET=docker-jwt-secret-change-in-production
+      - JWT_EXPIRES_IN=15m
+      - JWT_REFRESH_SECRET=docker-refresh-secret-change-in-production
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ALLOWED_ORIGINS=http://localhost:3000,http://api-gateway:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - 50brains-network
+    volumes:
+      - ./services/auth-service/src:/app/src
+      - ./services/auth-service/prisma:/app/prisma
+      - ./services/auth-service/package.json:/app/package.json
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: 50brains-user
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=docker
+      - PORT=4002
+      - DATABASE_URL=postgresql://brains_user:brains_password@postgres:5432/brains_db?schema=users
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - 50brains-network
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+    command: npm run start:dev
+
+  social-media-service:
+    build:
+      context: ./services/social-media-service
+      dockerfile: Dockerfile
+    container_name: 50brains-social-media
+    ports:
+      - "4008:4008"
+    environment:
+      - NODE_ENV=docker
+      - PORT=4008
+      - DATABASE_URL=postgresql://brains_user:brains_password@postgres:5432/brains_db?schema=social_media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - 50brains-network
+    volumes:
+      - ./services/social-media-service:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Add more services as you build them...
+  # marketplace-service:
+  # payment-service:
+  # etc...

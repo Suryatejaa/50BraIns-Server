@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  type        NotificationType
+  status      NotificationStatus @default(SENT)
+  readAt      DateTime?
+  actionUrl   String?
+  metadata    Json?
+  relatedId   String?
+  relatedType String?
+  priority    Int      @default(1)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@map("notifications")
+}
+
+model EmailTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  subject     String
+  bodyHtml    String
+  bodyText    String?
+  variables   String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notificationEmailTemplates")
+}
+
+model NotificationPreference {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  emailNotifications Boolean @default(true)
+  pushNotifications  Boolean @default(true)
+  gigUpdates         Boolean @default(true)
+  clanUpdates        Boolean @default(true)
+  creditUpdates      Boolean @default(true)
+  marketingEmails    Boolean @default(false)
+  frequency          String  @default("immediate")
+  quietHoursStart    String?
+  quietHoursEnd      String?
+  timezone           String? @default("UTC")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("notificationPreferences")
+}
+
+model NotificationLog {
+  id              String   @id @default(cuid())
+  notificationId  String
+  channel         String
+  status          NotificationStatus
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  failureReason   String?
+  retryCount      Int      @default(0)
+  metadata        Json?
+
+  @@index([notificationId])
+  @@map("notificationLogs")
+}
+
+enum NotificationType {
+  SYSTEM
+  GIG
+  CLAN
+  CREDIT
+  REPUTATION
+  MESSAGE
+  ENGAGEMENT
+}
+
+enum NotificationStatus {
+  SENT
+  READ
+  FAILED
+}

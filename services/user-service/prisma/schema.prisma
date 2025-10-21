@@ -1,0 +1,281 @@
+// This is your Prisma schema file for the User Service
+// Uses the SAME database as auth-service for collaboration
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // Pooled connection
+  directUrl = env("DIRECT_URL")        // Direct connection
+}
+
+// SHARED MODEL - Same as auth-service (read-only for user-service)
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  username          String   @unique
+  firstName         String?
+  lastName          String?
+  phone             String?
+  bio               String?
+  location          String?
+  profilePicture    String?
+  coverImage        String?
+
+  // Social media handles
+  instagramHandle   String?
+  twitterHandle     String?
+  linkedinHandle    String?
+  youtubeHandle     String?
+  website           String?
+  
+  // Influencer-specific fields
+  contentCategories String[]  @default([])
+  primaryNiche      String?
+  primaryPlatform   String?
+  estimatedFollowers Int?
+
+  // Brand-specific fields  
+  companyName       String?
+  companyType       String?
+  industry          String?
+  gstNumber         String?
+  companyWebsite    String?
+  marketingBudget   String?
+  targetAudience    String[]  @default([])
+  campaignTypes     String[]  @default([])
+  designationTitle  String?
+  
+  // Crew-specific fields
+  crewSkills        String[]  @default([])
+  experienceLevel   String?
+  equipmentOwned    String[]  @default([])
+  portfolioUrl      String?
+  hourlyRate        Int?
+  availability      String?
+  workStyle         String?
+  specializations   String[]  @default([])
+  
+  // Account status
+  roles             roles[]   @default([USER])
+  status            Status    @default(PENDING_VERIFICATION)
+  isActive          Boolean   @default(true)
+  emailVerified     Boolean   @default(false)
+  emailVerifiedAt   DateTime?
+  
+  // Security
+  twoFactorSecret   String?
+  twoFactorEnabled  Boolean   @default(false)
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  emailVerificationToken String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastLoginAt       DateTime?
+  lastActiveAt      DateTime @default(now())
+  
+  // Ban information
+  isBanned          Boolean  @default(false)
+  banReason         String?
+  banExpiresAt      DateTime?
+  bannedAt          DateTime?
+  bannedBy          String?
+  
+  // Privacy settings
+  showContact       Boolean  @default(false)
+  
+  // Relations (shared with auth-service)
+  refreshTokens     RefreshToken[]
+  adminLogs         AdminLog[] @relation("AdminUser")
+  targetedLogs      AdminLog[] @relation("TargetUser")
+  equipment         Equipment[] // Equipment owned by user
+  
+  @@map("authUsers")
+}
+
+// SHARED MODELS - Same as auth-service
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastUsedAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("authRefreshTokens")
+}
+
+model AdminLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  targetId    String?
+  action      String
+  details     Json?
+  reason      String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  
+  admin       User     @relation("AdminUser", fields: [adminId], references: [id])
+  target      User?    @relation("TargetUser", fields: [targetId], references: [id])
+  
+  @@map("authAdminLogs")
+}
+
+// USER-SERVICE SPECIFIC TABLES (analytics and caching)
+// These are NEW tables that user-service can create for its own analytics
+
+model UserAnalytics {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  profileViews     Int      @default(0)
+  searchAppearances Int     @default(0)
+  lastViewedAt     DateTime?
+  popularityScore  Float    @default(0)
+  engagementScore  Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@map("userAnalytics")
+  @@index([popularityScore])
+  @@index([engagementScore])
+}
+
+// Search history for analytics and recommendations
+model SearchHistory {
+  id          String   @id @default(cuid())
+  searchQuery String
+  searchType  String   // 'influencer', 'brand', 'crew', 'general'
+  filters     Json?    // Store search filters as JSON
+  resultCount Int
+  searcherId  String?  // User who performed the search (optional)
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  
+  @@map("userSearchHistory")
+  @@index([searchType])
+  @@index([createdAt])
+}
+
+// User favorites/bookmarks (user-service specific feature)
+model UserFavorite {
+  id           String   @id @default(cuid())
+  userId       String   // The user who favorited
+  favoriteUserId String // The user being favorited
+  favoriteType String   // 'influencer', 'brand', 'crew'
+  createdAt    DateTime @default(now())
+  
+  @@unique([userId, favoriteUserId])
+  @@map("userFavorites")
+  @@index([userId])
+  @@index([favoriteUserId])
+}
+
+enum roles {
+  USER
+  INFLUENCER
+  BRAND
+  CREW
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+  
+}
+
+enum Status {
+  PENDING_VERIFICATION
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BANNED
+}
+
+// Boost Event Tracking (from Credit Service events)
+model UserBoostEvent {
+  id           String   @id @default(cuid())
+  userId       String   // User who received the boost
+  boostType    String   // 'profile_boost'
+  boosterId    String   // User who initiated the boost
+  amount       Float    // Credits spent on boost
+  duration     Int      // Boost duration in hours
+  eventId      String   @unique // Original event ID from credit service
+  isActive     Boolean  @default(true)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  
+  @@map("userBoostEvents")
+  @@index([userId])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+// Credit Transaction Events (from Credit Service)
+model UserCreditEvent {
+  id            String   @id @default(cuid())
+  userId        String   // User involved in the transaction
+  eventType     String   // 'credit_purchase', 'credit_spent', 'credit_earned'
+  amount        Float    // Credit amount
+  description   String?  // Transaction description
+  eventId       String   @unique // Original event ID from credit service
+  metadata      Json?    // Additional event data
+  createdAt     DateTime @default(now())
+  
+  @@map("userCreditEvents")
+  @@index([userId])
+  @@index([eventType])
+}
+
+// Equipment Management for Crew Members
+model Equipment {
+  id                String   @id @default(cuid())
+  userId            String   // Owner of the equipment
+  name              String   // Equipment name/title
+  category          String   // Equipment category (Cameras, Lenses, Audio, etc.)
+  brand             String?  // Equipment brand
+  model             String?  // Equipment model
+  description       String?  // Detailed description
+  condition         EquipmentCondition @default(GOOD)
+  purchaseDate      DateTime?
+  purchasePrice     Float?   // Purchase price
+  currentValue      Float?   // Current estimated value
+  isAvailable       Boolean  @default(true) // Available for projects
+  isIncludedInBids  Boolean  @default(true) // Include in bid proposals
+  specifications    Json?    // Technical specifications as JSON
+  images            String[] @default([]) // Image URLs
+  lastServiceDate   DateTime?
+  nextServiceDue    DateTime?
+  location          String?  // Storage location
+  serialNumber      String?  // Serial number
+  insuranceValue    Float?   // Insurance value
+  notes             String?  // Additional notes
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("userEquipment")
+  @@index([userId])
+  @@index([category])
+  @@index([isAvailable])
+  @@index([condition])
+}
+
+enum EquipmentCondition {
+  NEW
+  EXCELLENT
+  GOOD
+  FAIR
+  NEEDS_REPAIR
+}
