@@ -80,9 +80,6 @@ app.get('/health', async (req, res) => {
         // Check RabbitMQ connection
         const mqStatus = eventProcessor.isConnected ? 'connected' : 'disconnected';
 
-        // Check Redis connection
-        const redisStatus = leaderboardService.isConnected ? 'connected' : 'disconnected';
-
         res.json({
             success: true,
             service: 'reputation-service',
@@ -92,8 +89,7 @@ app.get('/health', async (req, res) => {
             environment: process.env.NODE_ENV || 'development',
             connections: {
                 database: 'connected',
-                rabbitmq: mqStatus,
-                redis: redisStatus
+                rabbitmq: mqStatus
             },
             uptime: process.uptime()
         });
@@ -201,9 +197,9 @@ const gracefulShutdown = async (signal) => {
         await eventProcessor.disconnect();
         logger.info('RabbitMQ disconnected');
 
-        // Close Redis connection
+        // Close database connections
         await leaderboardService.disconnect();
-        logger.info('Redis disconnected');
+        logger.info('Database connections closed');
 
         logger.info('Graceful shutdown completed');
         process.exit(0);
@@ -238,21 +234,17 @@ async function startServer() {
         await eventProcessor.connect();
         logger.info('✅ Event processor connected');
 
-        // Connect to Redis
-        await leaderboardService.connect();
-        logger.info('✅ Leaderboard service connected');
-
         // Start cron jobs for periodic tasks
         if (process.env.ENABLE_CRON_JOBS === 'true') {
             const cron = require('node-cron');
 
-            // Update leaderboard cache every 5 minutes
-            cron.schedule('*/5 * * * *', async () => {
+            // Warm up leaderboards every 10 minutes
+            cron.schedule('*/10 * * * *', async () => {
                 try {
-                    await leaderboardService.updateLeaderboardCache();
-                    logger.info('📊 Leaderboard cache updated');
+                    await leaderboardService.warmupLeaderboards();
+                    logger.info('📊 Leaderboards warmed up');
                 } catch (error) {
-                    logger.error('❌ Failed to update leaderboard cache:', error);
+                    logger.error('❌ Failed to warm up leaderboards:', error);
                 }
             });
 

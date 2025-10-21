@@ -2,7 +2,6 @@ const { json } = require('stream/consumers');
 const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
 const Joi = require('joi');
-const app = require('../../../../api-gateway/src/app');
 
 class GigController {
     constructor() {

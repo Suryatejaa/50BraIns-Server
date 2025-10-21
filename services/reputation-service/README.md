@@ -20,7 +20,6 @@ The **Reputation Service** is the heart of the 50BraIns ecosystem, providing cen
 - **Score Decay System**: Gradual score reduction for inactive users
 - **Bonus Scoring**: Additional points for exceptional performance
 - **Rising Stars Detection**: Identify rapidly improving users
-- **Cache Optimization**: Redis-powered leaderboard caching
 - **Scheduled Tasks**: Automated maintenance and recalculation
 - **Emergency Controls**: Manual override capabilities for moderation
 
@@ -30,7 +29,6 @@ The **Reputation Service** is the heart of the 50BraIns ecosystem, providing cen
 - **Runtime**: Node.js with Express.js
 - **Database**: PostgreSQL with Prisma ORM
 - **Message Queue**: RabbitMQ for event processing
-- **Cache**: Redis for leaderboard optimization
 - **Logging**: Winston for comprehensive logging
 - **Scheduling**: Node-cron for periodic tasks
 
@@ -167,9 +165,6 @@ DATABASE_URL=postgresql://user:password@localhost:5432/reputation_db
 # RabbitMQ
 RABBITMQ_URL=amqp://localhost
 
-# Redis
-REDIS_URL=redis://localhost:6379
-
 # Scoring Configuration
 SCORE_GIG_COMPLETED=10
 SCORE_GIG_POSTED=2
@@ -203,7 +198,6 @@ HISTORY_RETENTION_DAYS=180
 ### Prerequisites
 - Node.js 18+
 - PostgreSQL 14+
-- Redis 6+
 - RabbitMQ 3.8+
 
 ### Installation Steps
@@ -240,11 +234,10 @@ npx prisma studio
 The service provides comprehensive health monitoring:
 - Database connectivity
 - RabbitMQ connection status
-- Redis availability
 - Service uptime
 
 ### Scheduled Tasks
-- **Leaderboard Cache Update**: Every 5 minutes
+- **Leaderboard Warmup**: Every 10 minutes
 - **Score Recalculation**: Daily at 2 AM
 - **Score Decay Application**: Daily at 3 AM
 - **Clan Reputation Update**: Hourly
@@ -252,7 +245,8 @@ The service provides comprehensive health monitoring:
 - **Weekly Reports**: Sunday at 4 AM
 
 ### Performance Optimization
-- **Redis Caching**: Leaderboards cached for 5 minutes
+- **Database Optimization**: Efficient indexing and query optimization
+- **Event Processing**: Asynchronous RabbitMQ message handling
 - **Batch Processing**: Score updates processed in batches
 - **Database Indexing**: Optimized queries for large datasets
 - **Connection Pooling**: Efficient database connections

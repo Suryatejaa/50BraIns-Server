@@ -1,59 +1,18 @@
-const redis = require('redis');
 const { PrismaClient } = require('@prisma/client');
 
 class LeaderboardService {
     constructor() {
         this.prisma = new PrismaClient();
-        this.redis = null;
-        this.isConnected = false;
-        this.cachePrefix = 'reputation:leaderboard:';
-        this.cacheTTL = 300; // 5 minutes
     }
 
-    async connect() {
-        try {
-            this.redis = redis.createClient({
-                url: process.env.REDIS_URL || 'redis://localhost:6379'
-            });
 
-            this.redis.on('error', (err) => {
-                console.error('❌ [Reputation] Redis connection error:', err);
-                this.isConnected = false;
-            });
-
-            this.redis.on('connect', () => {
-                console.log('✅ [Reputation] Connected to Redis');
-                this.isConnected = true;
-            });
-
-            await this.redis.connect();
-        } catch (error) {
-            console.error('❌ [Reputation] Failed to connect to Redis:', error);
-            this.isConnected = false;
-        }
-    }
 
     async getLeaderboard(type = 'global', limit = 100, offset = 0, filters = {}) {
         try {
-            const cacheKey = `${this.cachePrefix}${type}:${limit}:${offset}:${JSON.stringify(filters)}`;
-
-            // Try to get from cache first
-            if (this.isConnected) {
-                const cached = await this.redis.get(cacheKey);
-                if (cached) {
-                    console.log(`📋 [Reputation] Leaderboard served from cache: ${type}`);
-                    return JSON.parse(cached);
-                }
-            }
+            console.log(`📋 [Reputation] Generating ${type} leaderboard from database`);
 
             // Generate leaderboard from database
             const leaderboard = await this.generateLeaderboard(type, limit, offset, filters);
-
-            // Cache the result
-            if (this.isConnected && leaderboard) {
-                await this.redis.setEx(cacheKey, this.cacheTTL, JSON.stringify(leaderboard));
-            }
-
             return leaderboard;
 
         } catch (error) {
@@ -411,42 +370,28 @@ class LeaderboardService {
         }
     }
 
-    async invalidateCache(pattern = '*') {
-        if (!this.isConnected) return;
 
-        try {
-            const keys = await this.redis.keys(`${this.cachePrefix}${pattern}`);
-            if (keys.length > 0) {
-                await this.redis.del(keys);
-                console.log(`🗑️ [Reputation] Invalidated ${keys.length} cache keys`);
-            }
-        } catch (error) {
-            console.error('❌ [Reputation] Failed to invalidate cache:', error);
-        }
-    }
 
-    async updateLeaderboardCache() {
-        console.log('🔄 [Reputation] Updating leaderboard cache...');
+    async warmupLeaderboards() {
+        console.log('🔄 [Reputation] Warming up leaderboards...');
 
-        // Pre-generate common leaderboards
+        // Pre-generate common leaderboards for performance
         const types = ['global', 'tier', 'creators', 'clients', 'rising', 'clans'];
 
         for (const type of types) {
             try {
-                await this.invalidateCache(`${type}:*`);
                 await this.getLeaderboard(type, 100, 0);
-                console.log(`✅ [Reputation] Updated ${type} leaderboard cache`);
+                console.log(`✅ [Reputation] Warmed up ${type} leaderboard`);
             } catch (error) {
-                console.error(`❌ [Reputation] Failed to update ${type} leaderboard:`, error);
+                console.error(`❌ [Reputation] Failed to warm up ${type} leaderboard:`, error);
             }
         }
     }
 
     async disconnect() {
-        if (this.redis) {
-            await this.redis.disconnect();
-            console.log('🔌 [Reputation] Disconnected from Redis');
-        }
+        // Close Prisma connection
+        await this.prisma.$disconnect();
+        console.log('🔌 [Reputation] Disconnected from database');
     }
 }
 
