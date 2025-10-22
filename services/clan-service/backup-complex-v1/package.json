@@ -69,8 +69,8 @@
     "prisma": "^5.22.0",
     "supertest": "^6.3.3"
   },
-  "engines": {
-    "node": ">=18.0.0",
+ "engines": {
+    "node": ">=20.0.0",
     "npm": ">=8.0.0"
   },
   "repository": {

@@ -26,11 +26,11 @@ COPY src ./src/
 RUN mkdir -p logs
 
 # Expose port (will be overridden by Railway)
-EXPOSE 4002
+EXPOSE 4000
 
 # Health check (optional but recommended)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
-  CMD node -e "require('http').get('http://localhost:4002/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
+  CMD node -e "require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
 
 # Start the service
 CMD ["npm", "start"]

@@ -1,27 +1,36 @@
-FROM node:18-alpine
+# Use Node 20 Alpine for all services
+FROM node:20-alpine
 
-WORKDIR /app
+# Install OpenSSL (required for Prisma)
+RUN apk add --no-cache openssl
+
+# Set working directory
+WORKDIR /usr/src/app
 
 # Copy package files
-COPY package-simplified.json package.json
-COPY prisma ./prisma/
+COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install production dependencies only
+RUN npm ci --only=production
+
+# Copy Prisma schema (if exists)
+COPY prisma* ./
+
+# Generate Prisma client (if schema exists)
+RUN [ -f "schema.prisma" ] && npx prisma generate || echo "No Prisma schema found"
 
 # Copy source code
-COPY src/simplified-clan-service.js ./src/
-COPY migrations ./migrations/
+COPY src ./src/
 
-# Generate Prisma client
-RUN npx prisma generate
+# Create logs directory
+RUN mkdir -p logs
 
-# Expose port
+# Expose port (will be overridden by Railway)
 EXPOSE 4003
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:4003/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD node -e "require('http').get('http://localhost:4003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
 
 # Start the service
 CMD ["npm", "start"]

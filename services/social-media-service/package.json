@@ -11,6 +11,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=8.0.0"
+  },
   "dependencies": {
     "@prisma/client": "^5.10.2",
     "amqplib": "^0.10.3",

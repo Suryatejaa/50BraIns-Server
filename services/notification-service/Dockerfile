@@ -1,45 +1,36 @@
-# Use Node.js 18 Alpine for smaller image size
-FROM node:18-alpine
+# Use Node 20 Alpine for all services
+FROM node:20-alpine
+
+# Install OpenSSL (required for Prisma)
+RUN apk add --no-cache openssl
 
 # Set working directory
-WORKDIR /app
-
-# Install system dependencies
-RUN apk add --no-cache \
-    postgresql-client \
-    curl
+WORKDIR /usr/src/app
 
 # Copy package files
 COPY package*.json ./
 
-# Install Node.js dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install production dependencies only
+RUN npm ci --only=production
 
-# Copy application code
-COPY . .
+# Copy Prisma schema (if exists)
+COPY prisma* ./
 
-# Generate Prisma client
-RUN npx prisma generate
+# Generate Prisma client (if schema exists)
+RUN [ -f "schema.prisma" ] && npx prisma generate || echo "No Prisma schema found"
+
+# Copy source code
+COPY src ./src/
 
 # Create logs directory
 RUN mkdir -p logs
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S notifications -u 1001 -G nodejs
-
-# Change ownership of the app directory
-RUN chown -R notifications:nodejs /app
-
-# Switch to non-root user
-USER notifications
-
-# Expose port
+# Expose port (will be overridden by Railway)
 EXPOSE 4009
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:4009/health || exit 1
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD node -e "require('http').get('http://localhost:4009/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
 
-# Start command
+# Start the service
 CMD ["npm", "start"]

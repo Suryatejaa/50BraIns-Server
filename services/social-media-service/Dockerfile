@@ -1,23 +1,36 @@
-# Use an official Node.js runtime as a parent image
-FROM node:18-alpine
+# Use Node 20 Alpine for all services
+FROM node:20-alpine
 
-# Set the working directory in the container
-WORKDIR /app
+# Install OpenSSL (required for Prisma)
+RUN apk add --no-cache openssl
 
-# Copy package.json and package-lock.json to the working directory
+# Set working directory
+WORKDIR /usr/src/app
+
+# Copy package files
 COPY package*.json ./
 
-# Install any needed packages
-RUN npm install
+# Install production dependencies only
+RUN npm ci --only=production
 
-# Copy the rest of the application code to the working directory
-COPY . .
+# Copy Prisma schema (if exists)
+COPY prisma* ./
 
-# Generate Prisma client
-RUN npx prisma generate
+# Generate Prisma client (if schema exists)
+RUN [ -f "schema.prisma" ] && npx prisma generate || echo "No Prisma schema found"
 
-# Make port 4008 available to the world outside this container
+# Copy source code
+COPY src ./src/
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose port (will be overridden by Railway)
 EXPOSE 4008
 
-# Define the command to run your app
-CMD [ "npm", "start" ]
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD node -e "require('http').get('http://localhost:4008/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
+
+# Start the service
+CMD ["npm", "start"]

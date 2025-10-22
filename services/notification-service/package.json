@@ -50,6 +50,10 @@
     "microservice",
     "50brains"
   ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=8.0.0"
+  },
   "author": "50BraIns Team",
   "license": "MIT"
 }

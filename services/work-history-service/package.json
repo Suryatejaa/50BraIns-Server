@@ -12,6 +12,10 @@
     "prisma:reset": "prisma migrate reset",
     "prisma:studio": "prisma studio"
   },
+   "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=8.0.0"
+  },
   "keywords": [
     "work-history",
     "portfolio",

@@ -13,7 +13,8 @@
     "prisma:studio": "prisma studio",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix"
-  },
+  }, 
+  
   "keywords": [
     "reputation",
     "scoring",
@@ -48,7 +49,7 @@
     "supertest": "^6.3.4"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "npm": ">=8.0.0"
   }
 }

@@ -12,6 +12,10 @@
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio"
   },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=8.0.0"
+  },
   "keywords": ["credits", "boost", "monetization", "microservice", "50brains"],
   "author": "50BraIns Team",
   "license": "ISC",

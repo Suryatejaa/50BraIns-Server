@@ -1,40 +1,36 @@
-# Use official Node.js runtime as base image
-FROM node:18-alpine
+# Use Node 20 Alpine for all services
+FROM node:20-alpine
+
+# Install OpenSSL (required for Prisma)
+RUN apk add --no-cache openssl
 
 # Set working directory
-WORKDIR /app
-
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodeuser -u 1001
+WORKDIR /usr/src/app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install production dependencies only
+RUN npm ci --only=production
+
+# Copy Prisma schema (if exists)
+COPY prisma* ./
+
+# Generate Prisma client (if schema exists)
+RUN [ -f "schema.prisma" ] && npx prisma generate || echo "No Prisma schema found"
 
 # Copy source code
-COPY src/ ./src/
+COPY src ./src/
 
-# Set ownership to non-root user
-RUN chown -R nodeuser:nodejs /app
+# Create logs directory
+RUN mkdir -p logs
 
-# Switch to non-root user
-USER nodeuser
-
-# Expose port
+# Expose port (will be overridden by Railway)
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
 
-# Use dumb-init to handle signals properly
-ENTRYPOINT ["dumb-init", "--"]
-
-# Start the application
-CMD ["node", "src/server.js"]
+# Start the service
+CMD ["npm", "start"]

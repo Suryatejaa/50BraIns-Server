@@ -1,22 +1,36 @@
-FROM node:20-slim
+# Use Node 20 Alpine for all services
+FROM node:20-alpine
 
-WORKDIR /app
+# Install OpenSSL (required for Prisma)
+RUN apk add --no-cache openssl
 
-# Install dependencies first (for better caching)
+# Set working directory
+WORKDIR /usr/src/app
+
+# Copy package files
 COPY package*.json ./
-RUN npm ci
 
-# Copy prisma schema and generate Prisma client
-COPY prisma ./prisma/
-RUN npx prisma generate
+# Install production dependencies only
+RUN npm ci --only=production
 
-# Copy remaining files
-COPY . .
+# Copy Prisma schema (if exists)
+COPY prisma* ./
 
+# Generate Prisma client (if schema exists)
+RUN [ -f "schema.prisma" ] && npx prisma generate || echo "No Prisma schema found"
+
+# Copy source code
+COPY src ./src/
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose port (will be overridden by Railway)
 EXPOSE 4001
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -qO- http://localhost:4001/health || exit 1
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD node -e "require('http').get('http://localhost:4001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || true
 
+# Start the service
 CMD ["npm", "start"]
