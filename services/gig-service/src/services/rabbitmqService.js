@@ -76,6 +76,8 @@ class RabbitMQService {
                 }, 5000);
             });
 
+            return true; // Return success
+
         } catch (error) {
             console.error('❌ [Gig Service] Failed to connect to RabbitMQ:', error);
             this.isConnected = false;
@@ -83,6 +85,7 @@ class RabbitMQService {
             setTimeout(() => {
                 this.connect();
             }, 5000);
+            return false; // Return failure
         }
     }
 
@@ -150,11 +153,6 @@ class RabbitMQService {
     // Method for publishing clan-related gig events
     async publishClanGigEvent(routingKey, eventData) {
         return this.publishEvent(routingKey, eventData, this.gigExchange);
-    }
-
-    // Method for publishing reputation events
-    async publishReputationEvent(routingKey, eventData) {
-        return this.publishEvent(routingKey, eventData, this.reputationExchange);
     }
 
     // Method for publishing reputation events

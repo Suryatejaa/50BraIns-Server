@@ -135,34 +135,35 @@ async function startServer() {
             // Start Event Consumers
             try {
                 const rabbitmqConnection = await rabbitmqService.connect();
-                if (rabbitmqConnection) {
+                if (rabbitmqConnection !== false && rabbitmqService.isConnected) {
                     console.log('🐇 [Gig Service] Connected to RabbitMQ successfully');
+
+                    // Start Credit Event Consumer
+                    const creditEventConsumer = new CreditEventConsumer();
+                    await rabbitmqService.startConsumer(async (message) => {
+                        await creditEventConsumer.handleMessage(message);
+                    });
+                    console.log('✅ [Gig Service] Credit event consumer started');
+
+                    // Start Gig Event Consumer
+                    const gigEventConsumer = new GigEventConsumer();
+                    await rabbitmqService.startConsumer(async (message) => {
+                        await gigEventConsumer.handleMessage(message);
+                    });
+                    console.log('✅ [Gig Service] Gig event consumer started');
+
+                    // Start cleanup cron job
+                    setInterval(async () => {
+                        try {
+                            await creditEventConsumer.cleanup();
+                            await gigEventConsumer.cleanup();
+                        } catch (error) {
+                            console.error('❌ [Gig Service] Cleanup error:', error);
+                        }
+                    }, 60 * 60 * 1000); // Run cleanup every hour
                 } else {
                     console.warn('⚠️  [Gig Service] RabbitMQ connection failed, continuing without message broker');
                 }
-                // Start Credit Event Consumer
-                const creditEventConsumer = new CreditEventConsumer();
-                await rabbitmqService.startConsumer(async (message) => {
-                    await creditEventConsumer.handleMessage(message);
-                });
-                console.log('✅ [Gig Service] Credit event consumer started');
-
-                // Start Gig Event Consumer
-                const gigEventConsumer = new GigEventConsumer();
-                await rabbitmqService.startConsumer(async (message) => {
-                    await gigEventConsumer.handleMessage(message);
-                });
-                console.log('✅ [Gig Service] Gig event consumer started');
-
-                // Start cleanup cron job
-                setInterval(async () => {
-                    try {
-                        await creditEventConsumer.cleanup();
-                        await gigEventConsumer.cleanup();
-                    } catch (error) {
-                        console.error('❌ [Gig Service] Cleanup error:', error);
-                    }
-                }, 60 * 60 * 1000); // Run cleanup every hour
 
             } catch (error) {
                 console.error('❌ [Gig Service] Failed to start event consumers:', error);
