@@ -88,18 +88,23 @@ const register = catchAsync(async (req, res) => {
         ip: req.ip
     });
 
-    res.cookie('refreshToken', user.tokens.refreshToken, {
+    // Cookie settings that support cross-origin development
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProduction && !process.env.ALLOW_INSECURE_COOKIES,
+        sameSite: process.env.ALLOW_CROSS_ORIGIN_COOKIES === 'true' ? 'none' : (isProduction ? 'strict' : 'lax'),
+        domain: process.env.COOKIE_DOMAIN || undefined
+    };
+
+    res.cookie('refreshToken', user.tokens.refreshToken, {
+        ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     // Set access token as cookie for easier API testing (Postman, etc.)
     res.cookie('accessToken', user.tokens.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        ...cookieOptions,
         maxAge: 15 * 60 * 1000 // 15 minutes (same as JWT expiry)
     });
 
@@ -128,19 +133,24 @@ const login = catchAsync(async (req, res) => {
         email: result.user.email,
         ip: req.ip,
         userAgent: req.get('User-Agent')
-    });    // Set refresh token as httpOnly cookie
-    res.cookie('refreshToken', result.tokens.refreshToken, {
+    });    // Cookie settings that support cross-origin development
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProduction && !process.env.ALLOW_INSECURE_COOKIES,
+        sameSite: process.env.ALLOW_CROSS_ORIGIN_COOKIES === 'true' ? 'none' : (isProduction ? 'strict' : 'lax'),
+        domain: process.env.COOKIE_DOMAIN || undefined
+    };
+
+    // Set refresh token as httpOnly cookie
+    res.cookie('refreshToken', result.tokens.refreshToken, {
+        ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     // Set access token as cookie for easier API testing (Postman, etc.)
     res.cookie('accessToken', result.tokens.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        ...cookieOptions,
         maxAge: 15 * 60 * 1000 // 15 minutes (same as JWT expiry)
     });
 
@@ -181,19 +191,24 @@ const refresh = catchAsync(async (req, res) => {
 
     logger.info('Tokens refreshed successfully', {
         ip: req.ip
-    });    // Set new refresh token as httpOnly cookie
-    res.cookie('refreshToken', tokens.refreshToken, {
+    });    // Cookie settings that support cross-origin development
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProduction && !process.env.ALLOW_INSECURE_COOKIES,
+        sameSite: process.env.ALLOW_CROSS_ORIGIN_COOKIES === 'true' ? 'none' : (isProduction ? 'strict' : 'lax'),
+        domain: process.env.COOKIE_DOMAIN || undefined
+    };
+
+    // Set new refresh token as httpOnly cookie
+    res.cookie('refreshToken', tokens.refreshToken, {
+        ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     // Set new access token as cookie for easier API testing
     res.cookie('accessToken', tokens.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        ...cookieOptions,
         maxAge: 15 * 60 * 1000 // 15 minutes
     });
 

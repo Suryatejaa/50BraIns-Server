@@ -1,0 +1,117 @@
+# =============================================================================
+# 50BraIns Railway Environment Configuration - Updated for Development Testing
+# =============================================================================
+
+# Basic Configuration
+NODE_ENV=production
+PORT=4001
+
+# Database Configuration
+DATABASE_URL="postgresql://postgres.abolggvrzyklywnimwan:EPJXgq6%2Fk7HaH%2FP@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres.abolggvrzyklywnimwan:EPJXgq6%2Fk7HaH%2FP@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
+
+# RabbitMQ Configuration
+RABBITMQ_URL=amqps://mahifqgz:UTImWgOvCaa-95mb9DZL4X83mydMV9qt@armadillo.rmq.cloudamqp.com/mahifqgz
+
+# JWT Configuration - Production Secrets (Current Railway Values)
+JWT_SECRET=50brains-prod-jwt-secret-a8f9d2e1c4b7a3f6d9e2c5b8a1f4d7e0c3b6d9e2f5a8c1b4d7e0a3f6c9b2e5a8
+JWT_REFRESH_SECRET=50brains-prod-refresh-secret-f4d7e0a1c8b5d2e9f6a3c0b7d4e1a8f5c2b9d6e3a0f7c4b1d8e5a2b9c6d3e0f7
+SESSION_SECRET=50brains-prod-session-secret-c0b7d4e1a8f5c2b9d6e3a0f7c4b1d8e5a2f9c6b3d0e7a4f1c8b5d2e9f6a3c0b7
+BCRYPT_ROUNDS=12
+
+# JWT Token Expiry
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Cookie Configuration for Cross-Origin Development
+ALLOW_CROSS_ORIGIN_COOKIES=true
+ALLOW_INSECURE_COOKIES=true
+COOKIE_DOMAIN=
+
+# CORS Configuration
+CORS_CREDENTIALS=true
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,https://50brains.vercel.app,https://50brains.com,https://www.50brains.com,https://app.50brains.com
+CORS_ALLOW_NO_ORIGIN=false
+CORS_METHODS=GET,POST,PUT,DELETE,OPTIONS,PATCH
+CORS_ALLOWED_HEADERS=Content-Type,Authorization,X-Requested-With,Accept,Origin,x-client-timestamp
+CORS_EXPOSED_HEADERS=Set-Cookie,X-Request-ID
+CORS_MAX_AGE=86400
+
+# Rate Limiting Configuration - More Permissive for Development Testing
+GLOBAL_RATE_LIMIT_WINDOW=900000
+GLOBAL_RATE_LIMIT_MAX=10000
+AUTH_RATE_LIMIT_WINDOW=900000
+AUTH_RATE_LIMIT_MAX=5000
+SPEED_LIMITER_DELAY_AFTER=100
+SPEED_LIMITER_DELAY_MS=500
+SPEED_LIMITER_MAX_DELAY=20000
+
+# Security Configuration
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=1000
+
+# Monitoring Configuration
+ENABLE_MONITORING=true
+MONITORING_PATH=/metrics
+HEALTH_CHECK_TIMEOUT=5000
+
+# Logging Configuration
+LOG_LEVEL=info
+LOG_FORMAT=combined
+ENABLE_FILE_LOGGING=false
+LOG_DIRECTORY=./logs
+
+# Proxy Configuration
+PROXY_TIMEOUT=30000
+PROXY_RETRIES=3
+PROXY_RETRY_DELAY=1000
+PROXY_FOLLOW_REDIRECTS=true
+PROXY_CHANGE_ORIGIN=true
+TRUST_PROXY=true
+
+# Service URLs (Railway Internal Networking)
+AUTH_SERVICE_URL=http://auth-service.railway.internal:4001
+USER_SERVICE_URL=http://user-service.railway.internal:4002
+CLAN_SERVICE_URL=http://clan-service.railway.internal:4003
+GIG_SERVICE_URL=http://gig-service.railway.internal:4004
+CREDIT_SERVICE_URL=http://credit-service.railway.internal:4005
+REPUTATION_SERVICE_URL=http://reputation-service.railway.internal:4006
+WORK_HISTORY_SERVICE_URL=http://work-history-service.railway.internal:4007
+SOCIAL_MEDIA_SERVICE_URL=http://social-media-service.railway.internal:4008
+NOTIFICATION_SERVICE_URL=http://notification-service.railway.internal:4009
+
+# Request Limits
+JSON_LIMIT=10mb
+URL_ENCODED_LIMIT=10mb
+
+# Cache Configuration
+CACHE_TTL=60
+ENABLE_RESPONSE_CACHE=false
+
+# Optional Email Configuration (if needed)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+EMAIL_FROM=noreply@50brains.com
+
+# 2FA Configuration
+APP_NAME=50BraIns
+TOTP_WINDOW=2
+
+# File Upload Configuration
+MAX_FILE_SIZE=5242880
+UPLOAD_PATH=./uploads
+
+# Development Features for Testing
+PRISMA_STUDIO_PORT=5555
+
+# =============================================================================
+# IMPORTANT NOTES:
+# =============================================================================
+# 1. ALLOW_CROSS_ORIGIN_COOKIES=true enables sameSite=none for development
+# 2. ALLOW_INSECURE_COOKIES=true disables secure flag for localhost testing
+# 3. These settings compromise security for development convenience
+# 4. For full production, set both to false and use proper HTTPS domains
+# 5. Update service URLs with actual Railway deployment URLs
+# =============================================================================
