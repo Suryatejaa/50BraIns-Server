@@ -162,7 +162,17 @@ const login = catchAsync(async (req, res) => {
 const refresh = catchAsync(async (req, res) => {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
+    // Enhanced debugging for refresh token issues
+    console.log('🔄 Refresh Token Debug:', {
+        hasCookies: !!req.cookies,
+        cookieRefreshToken: req.cookies?.refreshToken ? 'Present' : 'Missing',
+        bodyRefreshToken: req.body?.refreshToken ? 'Present' : 'Missing',
+        headers: req.headers,
+        body: req.body
+    });
+
     if (!refreshToken) {
+        console.log('❌ No refresh token found in cookies or body');
         throw new ValidationError('Refresh token is required');
     }
 

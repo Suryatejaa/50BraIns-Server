@@ -40,11 +40,11 @@ const config = {
     rateLimits: {
         global: {
             windowMs: parseInt(process.env.GLOBAL_RATE_LIMIT_WINDOW, 10) || 15 * 60 * 1000, // 15 minutes
-            max: parseInt(process.env.GLOBAL_RATE_LIMIT_MAX, 10) || (process.env.NODE_ENV === 'production' ? 1000 : 50000) // Much higher for dev
+            max: parseInt(process.env.GLOBAL_RATE_LIMIT_MAX, 10) || (process.env.NODE_ENV === 'production' ? 2000 : 50000) // Much higher for dev
         },
         auth: {
             windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW, 10) || 15 * 60 * 1000, // 15 minutes
-            max: parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || (process.env.NODE_ENV === 'production' ? 5 : 1000) // Much higher for dev
+            max: parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || (process.env.NODE_ENV === 'production' ? 500 : 5000) // Much higher for dev
         },
         speedLimiter: {
             delayAfter: parseInt(process.env.SPEED_LIMITER_DELAY_AFTER, 10) || 100,
