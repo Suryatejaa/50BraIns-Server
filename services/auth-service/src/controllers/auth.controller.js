@@ -92,9 +92,9 @@ const register = catchAsync(async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        secure: isProduction && !process.env.ALLOW_INSECURE_COOKIES,
-        sameSite: process.env.ALLOW_CROSS_ORIGIN_COOKIES === 'true' ? 'none' : (isProduction ? 'strict' : 'lax'),
-        domain: process.env.COOKIE_DOMAIN || undefined
+        secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
+        domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
     };
 
     res.cookie('refreshToken', user.tokens.refreshToken, {
@@ -137,9 +137,9 @@ const login = catchAsync(async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        secure: isProduction && !process.env.ALLOW_INSECURE_COOKIES,
-        sameSite: process.env.ALLOW_CROSS_ORIGIN_COOKIES === 'true' ? 'none' : (isProduction ? 'strict' : 'lax'),
-        domain: process.env.COOKIE_DOMAIN || undefined
+        secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
+        domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
     };
 
     // Set refresh token as httpOnly cookie
@@ -195,9 +195,9 @@ const refresh = catchAsync(async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        secure: isProduction && !process.env.ALLOW_INSECURE_COOKIES,
-        sameSite: process.env.ALLOW_CROSS_ORIGIN_COOKIES === 'true' ? 'none' : (isProduction ? 'strict' : 'lax'),
-        domain: process.env.COOKIE_DOMAIN || undefined
+        secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
+        domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
     };
 
     // Set new refresh token as httpOnly cookie
