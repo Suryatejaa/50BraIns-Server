@@ -1,4 +1,4 @@
-const { PrismaClient } = require('../../node_modules/.prisma/work-history-client');
+const { PrismaClient } = require('@prisma/client');
 
 let prisma = null;
 

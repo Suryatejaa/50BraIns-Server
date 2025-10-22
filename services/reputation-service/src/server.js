@@ -79,7 +79,7 @@ app.get('/health', async (req, res) => {
 
         // Check RabbitMQ connection
         const mqStatus = eventProcessor.isConnected ? 'connected' : 'disconnected';
-
+        
         res.json({
             success: true,
             service: 'reputation-service',

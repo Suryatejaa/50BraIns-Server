@@ -3,7 +3,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-const { PrismaClient } = require('.prisma/work-history-client/client');
+const { PrismaClient } = require('@prisma/client');
 
 
 // Import services and utilities
@@ -131,10 +131,12 @@ const gracefulShutdown = async (signal) => {
         // Close RabbitMQ connection
         await RabbitMQService.disconnect();
         Logger.info('RabbitMQ connection closed');
+        console.log('RabbitMQ connection closed');
 
         // Close Redis connection
         await RedisService.disconnect();
         Logger.info('Redis connection closed');
+        console.log('Redis connection closed');
 
         // Close Prisma connection
         await prisma.$disconnect();

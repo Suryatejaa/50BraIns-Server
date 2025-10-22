@@ -29,6 +29,7 @@ class RabbitMQService {
             this.reconnectAttempts = 0;
 
             Logger.info('RabbitMQ connected successfully');
+            console.log('🐇 RabbitMQ connected successfully');
 
         } catch (error) {
             Logger.error('Failed to connect to RabbitMQ:', error);

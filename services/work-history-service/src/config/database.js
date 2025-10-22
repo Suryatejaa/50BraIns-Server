@@ -3,7 +3,7 @@
  * Handles Prisma client initialization and database health checks
  */
 
-const { PrismaClient } = require('../../node_modules/.prisma/work-history-client');
+const { PrismaClient } = require('@prisma/client');
 const logger = require('./logger');
 
 let prisma = null;

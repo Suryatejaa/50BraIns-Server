@@ -22,6 +22,7 @@ const authRoutes = require('./routes/auth.routes');
 const { errorHandler, notFound } = require('./middleware/error.middleware');
 const { requestLogger, requestId } = require('./middleware/logging.middleware');
 const { securityHeaders } = require('./middleware/security.middleware');
+const e = require('express');
 
 const app = express();
 const PORT = process.env.PORT || 4001;
@@ -262,7 +263,12 @@ const startServer = async () => {
         });
 
         // Connect to RabbitMQ
-        await rabbitmqService.connect();
+        const rabbitmqConnection = await rabbitmqService.connect();
+        if (rabbitmqConnection) {
+            logger.info('🐇 Connected to RabbitMQ successfully');
+        }else {
+            logger.warn('⚠️  RabbitMQ connection failed, continuing without message broker');
+        }
 
         // Handle server errors
         server.on('error', (error) => {

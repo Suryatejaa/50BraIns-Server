@@ -27,6 +27,7 @@ const {
     errorHandler,
     notFoundHandler
 } = require('./middleware');
+const { logger } = require('handlebars');
 
 // Load environment variables
 dotenv.config();
@@ -134,8 +135,12 @@ async function startServer() {
 
             // Start Event Consumers
             try {
-                await rabbitmqService.connect();
-                
+                const rabbitmqConnection = await rabbitmqService.connect();
+                if (rabbitmqConnection) {
+                    logger.info('🐇 [Gig Service] Connected to RabbitMQ successfully');
+                } else {
+                    logger.warn('⚠️  [Gig Service] RabbitMQ connection failed, continuing without message broker');
+                }
                 // Start Credit Event Consumer
                 const creditEventConsumer = new CreditEventConsumer();
                 await rabbitmqService.startConsumer(async (message) => {
