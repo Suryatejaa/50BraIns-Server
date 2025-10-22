@@ -10,9 +10,11 @@
 SET session_replication_role = replica;
 
 -- Drop existing tables in reverse dependency order
+DROP TABLE IF EXISTS "socialMediaSnapshots";
+DROP TABLE IF EXISTS "socialMediaAccounts";
 DROP TABLE IF EXISTS "socialMediaProfiles";
 
-CREATE TABLE "socialMediaProfiles" (
+CREATE TABLE "socialMediaAccounts" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "platform" TEXT NOT NULL,
@@ -30,7 +32,14 @@ CREATE TABLE "socialMediaProfiles" (
     CONSTRAINT "socialMediaAccounts_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE IF NOT EXISTS "socialMediaSnapshots" (
+-- Create unique constraints and indexes for socialMediaAccounts
+CREATE UNIQUE INDEX IF NOT EXISTS "socialMediaAccounts_profileUrl_key" ON "socialMediaAccounts"("profileUrl");
+CREATE UNIQUE INDEX IF NOT EXISTS "socialMediaAccounts_userId_platform_key" ON "socialMediaAccounts"("userId", "platform");
+CREATE INDEX IF NOT EXISTS "socialMediaAccounts_userId_idx" ON "socialMediaAccounts"("userId");
+CREATE INDEX IF NOT EXISTS "socialMediaAccounts_platform_idx" ON "socialMediaAccounts"("platform");
+CREATE INDEX IF NOT EXISTS "socialMediaAccounts_followers_idx" ON "socialMediaAccounts"("followers");
+
+CREATE TABLE "socialMediaSnapshots" (
     "id" TEXT NOT NULL,
     "accountId" TEXT NOT NULL,
     "followers" INTEGER NOT NULL,
@@ -42,6 +51,10 @@ CREATE TABLE IF NOT EXISTS "socialMediaSnapshots" (
 
     CONSTRAINT "socialMediaSnapshots_pkey" PRIMARY KEY ("id")
 );
+
+-- Create indexes for socialMediaSnapshots
+CREATE INDEX IF NOT EXISTS "socialMediaSnapshots_accountId_idx" ON "socialMediaSnapshots"("accountId");
+CREATE INDEX IF NOT EXISTS "socialMediaSnapshots_createdAt_idx" ON "socialMediaSnapshots"("createdAt");
 
 -- Re-enable triggers
 SET session_replication_role = DEFAULT;

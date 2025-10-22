@@ -8,20 +8,20 @@ const slowDown = require('express-slow-down');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss');
 const hpp = require('hpp');
-const rabbitmqService = require('./src/utils/rabbitmq');
+const rabbitmqService = require('./utils/rabbitmq');
 require('dotenv').config();
 
 // Import configurations
-const { connectRedis } = require('./src/config/redis');
-const logger = require('./src/utils/logger.utils');
+const { connectRedis } = require('./config/redis');
+const logger = require('./utils/logger.utils');
 
 // Import routes
-const authRoutes = require('./src/routes/auth.routes');
+const authRoutes = require('./routes/auth.routes');
 
 // Import middleware
-const { errorHandler, notFound } = require('./src/middleware/error.middleware');
-const { requestLogger, requestId } = require('./src/middleware/logging.middleware');
-const { securityHeaders } = require('./src/middleware/security.middleware');
+const { errorHandler, notFound } = require('./middleware/error.middleware');
+const { requestLogger, requestId } = require('./middleware/logging.middleware');
+const { securityHeaders } = require('./middleware/security.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 4001;

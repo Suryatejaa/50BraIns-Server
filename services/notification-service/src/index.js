@@ -6,19 +6,19 @@ require('dotenv').config();
 
 // Import services
 const { PrismaClient } = require('@prisma/client');
-const RabbitMQService = require('./src/utils/rabbitmq');
-const EmailService = require('./src/utils/emailService');
-const WebSocketService = require('./src/utils/websocket');
-const RabbitMQWebSocketBridge = require('./src/utils/rabbitmq-websocket-bridge');
-const { NotificationConsumer } = require('./src/consumers/notificationConsumer');
-const logger = require('./src/utils/logger');
+const RabbitMQService = require('./utils/rabbitmq');
+const EmailService = require('./utils/emailService');
+const WebSocketService = require('./utils/websocket');
+const RabbitMQWebSocketBridge = require('./utils/rabbitmq-websocket-bridge');
+const { NotificationConsumer } = require('./consumers/notificationConsumer');
+const logger = require('./utils/logger');
 
 // Import routes
-const notificationRoutes = require('./src/routes/notificationRoutes');
-const adminRoutes = require('./src/routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Import middleware
-const { errorHandler } = require('./src/utils/errorHandler');
+const { errorHandler } = require('./utils/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 4009;

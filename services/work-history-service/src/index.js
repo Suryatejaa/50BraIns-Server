@@ -3,21 +3,21 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-const { PrismaClient } = require('./node_modules/.prisma/work-history-client');
+const { PrismaClient } = require('.prisma/work-history-client/client');
 
 
 // Import services and utilities
-const RabbitMQService = require('./src/services/rabbitmq.service');
-const RedisService = require('./src/services/redis.service');
-const WorkHistoryService = require('./src/services/workHistory.service');
-const ReputationIntegrationService = require('./src/services/reputationIntegration.service');
-const Logger = require('./src/utils/logger');
+const RabbitMQService = require('./services/rabbitmq.service');
+const RedisService = require('./services/redis.service');
+const WorkHistoryService = require('./services/workHistory.service');
+const ReputationIntegrationService = require('./services/reputationIntegration.service');
+const Logger = require('./utils/logger');
 
 // Import routes
-const workHistoryRoutes = require('./src/routes/workHistory.routes');
-const portfolioRoutes = require('./src/routes/portfolio.routes');
-const achievementRoutes = require('./src/routes/achievement.routes');
-const summaryRoutes = require('./src/routes/summary.routes');
+const workHistoryRoutes = require('./routes/workHistory.routes');
+const portfolioRoutes = require('./routes/portfolio.routes');
+const achievementRoutes = require('./routes/achievement.routes');
+const summaryRoutes = require('./routes/summary.routes');
 
 // Initialize app
 const app = express();

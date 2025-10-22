@@ -4,8 +4,8 @@
   "description": "Work History Service - Source of truth for creator achievements and portfolio tracking",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon --env-file=.env.local index.js",
+    "start": "node src/index.js",
+    "dev": "nodemon --env-file=.env.local src/index.js",
     "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
