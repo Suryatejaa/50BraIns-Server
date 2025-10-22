@@ -18,6 +18,7 @@ const workHistoryRoutes = require('./routes/workHistory.routes');
 const portfolioRoutes = require('./routes/portfolio.routes');
 const achievementRoutes = require('./routes/achievement.routes');
 const summaryRoutes = require('./routes/summary.routes');
+const e = require('express');
 
 // Initialize app
 const app = express();
@@ -157,12 +158,16 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 const startServer = async () => {
     try {
         // Initialize Redis connection
-        await RedisService.connect();
+        const redisConnection = await RedisService.connect();
         Logger.info('Redis connected successfully');
 
         // Initialize RabbitMQ connection and consumers
-        await RabbitMQService.connect();
-        Logger.info('RabbitMQ connected successfully');
+        const rabbitmqConnection = await RabbitMQService.connect();
+        if (rabbitmqConnection) {
+            console.log('🐇 RabbitMQ connected successfully');
+        } else {
+            console.error('❌ RabbitMQ connection failed');
+        }
 
         // Setup event consumers
         await RabbitMQService.setupConsumers();
