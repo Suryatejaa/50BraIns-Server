@@ -185,6 +185,14 @@ const authLimiter = createRateLimiter(
     true
 );
 
+// More permissive rate limiter specifically for refresh token endpoint
+const refreshLimiter = createRateLimiter(
+    config.rateLimits.auth.windowMs,
+    config.rateLimits.auth.max * 2, // Double the limit for refresh
+    'Too many token refresh attempts, please try again later',
+    true
+);
+
 const speedLimiter = config.nodeEnv === 'test' ? (req, res, next) => next() : slowDown({
     windowMs: 15 * 60 * 1000,
     delayAfter: config.rateLimits.speedLimiter.delayAfter,
@@ -287,7 +295,8 @@ app.get('/api-docs', (req, res) => {
 
 
 // Route-specific rate limiting and middleware
-app.use('/api/auth', authLimiter);
+app.use('/api/auth/refresh', refreshLimiter); // More permissive for refresh
+app.use('/api/auth', authLimiter); // Standard auth rate limiting
 app.use(validationMiddleware);
 
 // =============================================================================
