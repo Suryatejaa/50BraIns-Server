@@ -3,7 +3,8 @@ const Logger = require('../utils/logger');
 
 class ReputationIntegrationService {
     constructor() {
-        this.reputationServiceUrl = process.env.REPUTATION_SERVICE_URL || 'http://localhost:4006';
+        const NODE_ENV = process.env.NODE_ENV;
+        this.reputationServiceUrl = NODE_ENV === 'production' ? process.env.REPUTATION_SERVICE_URL_PROD : process.env.REPUTATION_SERVICE_URL;
         this.rabbitMQService = null;
     }
 

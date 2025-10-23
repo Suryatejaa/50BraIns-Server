@@ -56,7 +56,7 @@ app.get('/health', async (req, res) => {
         await prisma.$queryRaw`SELECT 1`;
 
         // Check Redis connection
-        const redisHealth = await RedisService.ping();
+        // const redisHealth = await RedisService.ping();
 
         // Check RabbitMQ connection
         const rabbitmqHealth = RabbitMQService.isConnected();
@@ -135,9 +135,9 @@ const gracefulShutdown = async (signal) => {
         console.log('RabbitMQ connection closed');
 
         // Close Redis connection
-        await RedisService.disconnect();
-        Logger.info('Redis connection closed');
-        console.log('Redis connection closed');
+        // await RedisService.disconnect();
+        // Logger.info('Redis connection closed');
+        // console.log('Redis connection closed');
 
         // Close Prisma connection
         await prisma.$disconnect();
@@ -158,8 +158,8 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 const startServer = async () => {
     try {
         // Initialize Redis connection
-        const redisConnection = await RedisService.connect();
-        Logger.info('Redis connected successfully');
+        // const redisConnection = await RedisService.connect();
+        // Logger.info('Redis connected successfully');
 
         // Initialize RabbitMQ connection and consumers
         const rabbitmqConnection = await RabbitMQService.connect();
