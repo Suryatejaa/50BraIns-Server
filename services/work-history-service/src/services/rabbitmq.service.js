@@ -31,7 +31,6 @@ class RabbitMQService {
             this.reconnectAttempts = 0;
 
             Logger.info('RabbitMQ connected successfully');
-            console.log('🐇 RabbitMQ connected successfully');
 
             return true;
 
@@ -82,7 +81,7 @@ class RabbitMQService {
                 noAck: false
             });
 
-            Logger.info('RabbitMQ consumers setup successfully');
+            Logger.info('RabbitMQ consumers setup completed');
 
         } catch (error) {
             Logger.error('Error setting up RabbitMQ consumers:', error);

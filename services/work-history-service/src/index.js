@@ -5,7 +5,6 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { PrismaClient } = require('@prisma/client');
 
-
 // Import services and utilities
 const RabbitMQService = require('./services/rabbitmq.service');
 const RedisService = require('./services/redis.service');
@@ -18,178 +17,138 @@ const workHistoryRoutes = require('./routes/workHistory.routes');
 const portfolioRoutes = require('./routes/portfolio.routes');
 const achievementRoutes = require('./routes/achievement.routes');
 const summaryRoutes = require('./routes/summary.routes');
-const e = require('express');
 
-// Initialize app
+// Initialize app and middleware (synchronous setup - OK at top level)
 const app = express();
 const PORT = process.env.PORT || 4007;
-
-// Initialize Prisma client
 const prisma = new PrismaClient();
 
-// Trust proxy for proper IP detection (needed for rate limiting)
-app.set('trust proxy', 1);
+// Middleware
+app.use(helmet());
+app.use(morgan('combined'));
+app.use(compression());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Limit each IP to 1000 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.',
-    standardHeaders: true,
-    legacyHeaders: false,
+  windowMs: 15 * 60 * 1000,
+  max: 100
 });
-
-// Global middleware
-app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-app.use(compression());
-app.use(morgan('combined'));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(limiter);
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
-    try {
-        // Check database connection
-        await prisma.$queryRaw`SELECT 1`;
-
-        // Check Redis connection
-        // const redisHealth = await RedisService.ping();
-
-        // Check RabbitMQ connection
-        const rabbitmqHealth = RabbitMQService.isConnected();
-
-        res.status(200).json({
-            status: 'healthy',
-            service: 'work-history-service',
-            timestamp: new Date().toISOString(),
-            version: '1.0.0',
-            checks: {
-                database: 'connected',
-                redis: redisHealth ? 'connected' : 'disconnected',
-                rabbitmq: rabbitmqHealth ? 'connected' : 'disconnected'
-            }
-        });
-    } catch (error) {
-        Logger.error('Health check failed:', error);
-        res.status(503).json({
-            status: 'unhealthy',
-            service: 'work-history-service',
-            timestamp: new Date().toISOString(),
-            error: error.message
-        });
-    }
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    service: 'work-history',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// API routes - Gateway handles the /api prefix mapping
-app.use('/work-history', workHistoryRoutes);
-app.use('/portfolio', portfolioRoutes);
-app.use('/achievements', achievementRoutes);
-app.use('/summary', summaryRoutes);
+// Routes
+app.use('/api/work-history', workHistoryRoutes);
+app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/achievements', achievementRoutes);
+app.use('/api/summary', summaryRoutes);
 
-app.use('/', (req, res) => {
-    res.status(200).json({
-        service: 'Work History Service',
-        version: '1.0.0',
-        description: 'Source of truth for creator achievements and portfolio tracking',
-        timestamp: new Date().toISOString(),
-        endpoints: {
-            health: '/health',
-            workHistory: '/work-history',
-            portfolio: '/portfolio',
-            achievements: '/achievements',
-            summary: '/summary'
-        }
-    });
-});
-// 404 handler
-app.use('*', (req, res) => {
-    res.status(404).json({
-        success: false,
-        message: 'Route not found',
-        path: req.originalUrl
-    });
+// Error handling
+app.use((err, req, res, next) => {
+  Logger.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
-// Global error handler
-app.use((error, req, res, next) => {
-    Logger.error('Unhandled error:', error);
-
-    res.status(error.status || 500).json({
-        success: false,
-        message: error.message || 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-    });
-});
-
-// Graceful shutdown
-const gracefulShutdown = async (signal) => {
-    Logger.info(`Received ${signal}. Starting graceful shutdown...`);
-
-    try {
-        // Close RabbitMQ connection
-        await RabbitMQService.disconnect();
-        Logger.info('RabbitMQ connection closed');
-        console.log('RabbitMQ connection closed');
-
-        // Close Redis connection
-        // await RedisService.disconnect();
-        // Logger.info('Redis connection closed');
-        // console.log('Redis connection closed');
-
-        // Close Prisma connection
-        await prisma.$disconnect();
-        Logger.info('Database connection closed');
-
-        process.exit(0);
-    } catch (error) {
-        Logger.error('Error during graceful shutdown:', error);
-        process.exit(1);
-    }
-};
-
-// Handle shutdown signals
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// Start server
+// ✅ START SERVER FUNCTION - ALL ASYNC CODE HERE
 const startServer = async () => {
+  try {
+    console.log('🚀 ========================================');
+    console.log('🚀 Starting Work History Service...');
+    console.log('🚀 Time:', new Date().toISOString());
+    console.log('🚀 Port:', PORT);
+    console.log('🚀 Environment:', process.env.NODE_ENV);
+    console.log('🚀 ========================================');
+    
+    // Initialize RabbitMQ (OPTIONAL - Inside startServer)
     try {
-        // Initialize Redis connection
-        // const redisConnection = await RedisService.connect();
-        // Logger.info('Redis connected successfully');
-
-        // Initialize RabbitMQ connection and consumers
-        const rabbitmqConnected = await RabbitMQService.connect();
-        if (rabbitmqConnected) {
-            console.log('🐇 RabbitMQ connected successfully');
-
-            // Setup event consumers only if connected
-            await RabbitMQService.setupConsumers();
-            Logger.info('RabbitMQ consumers setup successfully');
-        } else {
-            console.error('❌ RabbitMQ connection failed');
-            Logger.warn('RabbitMQ not connected - service will continue without event processing');
-        }        // Test database connection
-        await prisma.$connect();
-        Logger.info('Database connected successfully');
-
-        // Start HTTP server
-        app.listen(PORT, () => {
-            Logger.info(`🔨 Work History Service running on port ${PORT}`);
-            Logger.info(`📊 Source of truth for creator achievements and portfolio tracking`);
-            Logger.info(`🌐 Health check: http://localhost:${PORT}/health`);
-        });
-
-    } catch (error) {
-        Logger.error('Failed to start Work History Service:', error);
-        process.exit(1);
+      console.log('📡 Connecting to RabbitMQ...');
+      Logger.info('Attempting to connect to RabbitMQ:', process.env.RABBITMQ_URL?.replace(/:[^:@]+@/, ':***@'));
+      
+      const rabbitmqConnection = await RabbitMQService.connect();
+      
+      if (rabbitmqConnection) {
+        console.log('✅ RabbitMQ connected');
+        Logger.info('RabbitMQ connected successfully');
+        
+        // Setup consumers
+        console.log('📡 Setting up RabbitMQ consumers...');
+        await RabbitMQService.setupConsumers();
+        console.log('✅ RabbitMQ consumers ready');
+        Logger.info('RabbitMQ consumers setup successfully');
+      } else {
+        console.warn('⚠️ RabbitMQ connection returned false');
+        Logger.warn('RabbitMQ connection failed');
+      }
+    } catch (rabbitmqError) {
+      console.warn('⚠️ ========================================');
+      console.warn('⚠️ RabbitMQ setup failed (service will continue)');
+      console.warn('⚠️ Error:', rabbitmqError.message);
+      console.warn('⚠️ ========================================');
+      Logger.warn('RabbitMQ initialization failed:', rabbitmqError);
     }
+
+    // Initialize database (REQUIRED - Inside startServer)
+    console.log('💾 Testing database connection...');
+    await prisma.$connect();
+    await prisma.$queryRaw`SELECT 1 as test`;
+    console.log('✅ Database connected and tested');
+    Logger.info('Database connected successfully');
+
+    // Start HTTP server
+    console.log(`🚀 Starting HTTP server on 0.0.0.0:${PORT}...`);
+    
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log('✅ ========================================');
+      console.log(`✅ Work History Service RUNNING`);
+      console.log(`✅ Port: ${PORT}`);
+      console.log(`✅ Environment: ${process.env.NODE_ENV}`);
+      console.log(`✅ Health: http://localhost:${PORT}/health`);
+      console.log(`✅ Time: ${new Date().toISOString()}`);
+      console.log('✅ ========================================');
+      
+      Logger.info(`🔨 Work History Service running on port ${PORT}`);
+      Logger.info(`📊 Source of truth for creator achievements and portfolio tracking`);
+      Logger.info(`🌐 Health check: http://localhost:${PORT}/health`);
+    });
+    
+  } catch (error) {
+    console.error('❌ ========================================');
+    console.error('❌ CRITICAL STARTUP ERROR');
+    console.error('❌ Message:', error.message);
+    console.error('❌ Stack:', error.stack);
+    console.error('❌ ========================================');
+    Logger.error('Failed to start Work History Service:', error);
+    process.exit(1);
+  }
 };
 
-// Start the server
-startServer();
+// Global error handlers (OK at top level)
+process.on('uncaughtException', (error) => {
+  console.error('💥 UNCAUGHT EXCEPTION:', error);
+  Logger.error('Uncaught Exception:', error);
+  process.exit(1);
+});
 
-module.exports = app;
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 UNHANDLED REJECTION at:', promise, 'reason:', reason);
+  Logger.error('Unhandled Rejection:', reason);
+  process.exit(1);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('👋 SIGTERM received, graceful shutdown...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+// ✅ CALL startServer() - This is the ONLY async code at top level
+startServer();
