@@ -9,10 +9,10 @@ const simpleController = require('../controllers/simple.controller');
 router.post('/simple-register', simpleController.simpleRegister);
 
 // Public routes with rate limiting
-router.post('/register', rateLimiter, authController.register);
-router.post('/login', rateLimiter, authController.login);
-router.post('/refresh', rateLimiter, authController.refresh);
-router.post('/forgot-password', rateLimiter, authController.requestPasswordReset);
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/refresh', authController.refresh);
+router.post('/forgot-password', authController.requestPasswordReset);
 router.get('/verify-email/:token', authController.verifyEmail);
 
 // Authenticated routes
