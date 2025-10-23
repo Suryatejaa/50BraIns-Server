@@ -104,7 +104,7 @@ class WorkHistoryService {
             await ReputationIntegrationService.notifyWorkCompleted(workRecord);
 
             // Clear cache
-            await this.clearUserCache(userId);
+            // await this.clearUserCache(userId);
 
             Logger.info(`Work record created for user ${userId}: ${workRecord.id}`);
             return workRecord;
@@ -165,13 +165,13 @@ class WorkHistoryService {
      */
     async getUserWorkSummary(userId) {
         try {
-            const cacheKey = `work_summary:${userId}`;
+            // const cacheKey = `work_summary:${userId}`;
 
             // Check cache first
-            const cached = await RedisService.get(cacheKey);
-            if (cached) {
-                return JSON.parse(cached);
-            }
+            // const cached = await RedisService.get(cacheKey);
+            // if (cached) {
+            //     return JSON.parse(cached);
+            // }
 
             let summary = await this.prisma.workSummary.findUnique({
                 where: { userId }
@@ -183,7 +183,7 @@ class WorkHistoryService {
             }
 
             // Cache for 1 hour
-            await RedisService.setex(cacheKey, 3600, JSON.stringify(summary));
+            // await RedisService.setex(cacheKey, 3600, JSON.stringify(summary));
 
             return summary;
 
@@ -319,7 +319,7 @@ class WorkHistoryService {
             });
 
             // Clear cache
-            await this.clearUserCache(userId);
+            // await this.clearUserCache(userId);
 
             return summary;
 
@@ -600,24 +600,24 @@ class WorkHistoryService {
     /**
      * Clear user-related cache
      */
-    async clearUserCache(userId) {
-        try {
-            const keys = [
-                `work_summary:${userId}`,
-                `work_history:${userId}`,
-                `achievements:${userId}`,
-                `skills:${userId}`
-            ];
+    // async clearUserCache(userId) {
+    //     try {
+    //         const keys = [
+    //             `work_summary:${userId}`,
+    //             `work_history:${userId}`,
+    //             `achievements:${userId}`,
+    //             `skills:${userId}`
+    //         ];
 
-            for (const key of keys) {
-                await RedisService.del(key);
-            }
+    //         for (const key of keys) {
+    //             await RedisService.del(key);
+    //         }
 
-        } catch (error) {
-            Logger.error('Error clearing user cache:', error);
-            // Don't throw - this is non-critical
-        }
-    }
+    //     } catch (error) {
+    //         Logger.error('Error clearing user cache:', error);
+    //         // Don't throw - this is non-critical
+    //     }
+    // }
 }
 
 module.exports = new WorkHistoryService();

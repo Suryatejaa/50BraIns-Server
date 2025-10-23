@@ -22,28 +22,62 @@ const summaryRoutes = require('./routes/summary.routes');
 const app = express();
 const PORT = process.env.PORT || 4007;
 const prisma = new PrismaClient();
-app.set('trust proxy', true);
+
+// Trust proxy configuration - more specific for Railway
+app.set('trust proxy', 1); // Trust first proxy (Railway's load balancer)
+
 // Middleware
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(morgan('combined'));
 app.use(compression());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting
+// Rate limiting with proper proxy handling
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // Limit each IP to 1000 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Skip rate limiting for health checks and internal requests
+    skip: (req) => {
+        return req.path === '/health' ||
+            req.headers['x-forwarded-for']?.includes('railway.internal');
+    }
 });
 app.use(limiter);
 
-// Health check
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        service: 'work-history',
-        timestamp: new Date().toISOString()
-    });
+// Health check endpoint
+app.get('/health', async (req, res) => {
+    try {
+        // Check database connection
+        await prisma.$queryRaw`SELECT 1`;
+
+        // Check RabbitMQ connection
+        const rabbitmqHealth = RabbitMQService.isConnected();
+
+        res.status(200).json({
+            status: 'healthy',
+            service: 'work-history-service',
+            timestamp: new Date().toISOString(),
+            version: '1.0.0',
+            checks: {
+                database: 'connected',
+                rabbitmq: rabbitmqHealth ? 'connected' : 'disconnected'
+            }
+        });
+    } catch (error) {
+        Logger.error('Health check failed:', error);
+        res.status(503).json({
+            status: 'unhealthy',
+            service: 'work-history-service',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        });
+    }
 });
 
 // Routes
@@ -52,10 +86,40 @@ app.use('/portfolio', portfolioRoutes);
 app.use('/achievements', achievementRoutes);
 app.use('/summary', summaryRoutes);
 
+// Root endpoint with service information
+app.use('/', (req, res) => {
+    res.status(200).json({
+        service: 'Work History Service',
+        version: '1.0.0',
+        description: 'Source of truth for creator achievements and portfolio tracking',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            health: '/health',
+            workHistory: '/work-history',
+            portfolio: '/portfolio',
+            achievements: '/achievements',
+            summary: '/summary'
+        }
+    });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+    res.status(404).json({
+        success: false,
+        message: 'Route not found',
+        path: req.originalUrl
+    });
+});
+
 // Error handling
 app.use((err, req, res, next) => {
     Logger.error('Unhandled error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
 });
 
 // ✅ START SERVER FUNCTION - ALL ASYNC CODE HERE
@@ -146,8 +210,40 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('SIGTERM', async () => {
     console.log('👋 SIGTERM received, graceful shutdown...');
-    await prisma.$disconnect();
-    process.exit(0);
+
+    try {
+        // Close RabbitMQ connection
+        await RabbitMQService.disconnect();
+        Logger.info('RabbitMQ connection closed');
+
+        // Close Prisma connection
+        await prisma.$disconnect();
+        Logger.info('Database connection closed');
+
+        process.exit(0);
+    } catch (error) {
+        Logger.error('Error during graceful shutdown:', error);
+        process.exit(1);
+    }
+});
+
+process.on('SIGINT', async () => {
+    console.log('👋 SIGINT received, graceful shutdown...');
+
+    try {
+        // Close RabbitMQ connection
+        await RabbitMQService.disconnect();
+        Logger.info('RabbitMQ connection closed');
+
+        // Close Prisma connection
+        await prisma.$disconnect();
+        Logger.info('Database connection closed');
+
+        process.exit(0);
+    } catch (error) {
+        Logger.error('Error during graceful shutdown:', error);
+        process.exit(1);
+    }
 });
 
 // ✅ CALL startServer() - This is the ONLY async code at top level
