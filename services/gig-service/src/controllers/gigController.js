@@ -835,7 +835,8 @@ class GigController {
     // Helper method to fetch user data from user-service
     async fetchUserData(userId) {
         try {
-            const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:4005';
+            const NODE_ENV = process.env.NODE_ENV || 'development';
+            const USER_SERVICE_URL = NODE_ENV === 'production' ? process.env.USER_SERVICE_URL_PROD : process.env.USER_SERVICE_URL || 'http://localhost:4002';
             const response = await fetch(`${USER_SERVICE_URL}/internal/users/${userId}`, {
                 headers: {
                     'X-Internal-Service': 'gig-service',
