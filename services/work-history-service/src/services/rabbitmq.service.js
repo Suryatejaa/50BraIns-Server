@@ -18,6 +18,8 @@ class RabbitMQService {
         try {
             const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 
+            Logger.info(`Attempting to connect to RabbitMQ: ${RABBITMQ_URL.replace(/\/\/.*@/, '//**:**@')}`);
+
             this.connection = await amqp.connect(RABBITMQ_URL);
             this.channel = await this.connection.createChannel();
 
@@ -31,9 +33,15 @@ class RabbitMQService {
             Logger.info('RabbitMQ connected successfully');
             console.log('🐇 RabbitMQ connected successfully');
 
+            return true;
+
         } catch (error) {
             Logger.error('Failed to connect to RabbitMQ:', error);
-            await this.handleReconnect();
+            this.isConnected = false;
+
+            // Don't call handleReconnect here during initial startup
+            // Let the service decide whether to continue or fail
+            return false;
         }
     }
 
@@ -41,8 +49,8 @@ class RabbitMQService {
      * Setup exchanges and queues, then start consuming
      */
     async setupConsumers() {
-        if (!this.channel) {
-            throw new Error('RabbitMQ channel not available');
+        if (!this.channel || !this.isConnected) {
+            throw new Error('RabbitMQ channel not available or not connected');
         }
 
         try {

@@ -162,18 +162,17 @@ const startServer = async () => {
         // Logger.info('Redis connected successfully');
 
         // Initialize RabbitMQ connection and consumers
-        const rabbitmqConnection = await RabbitMQService.connect();
-        if (rabbitmqConnection) {
+        const rabbitmqConnected = await RabbitMQService.connect();
+        if (rabbitmqConnected) {
             console.log('🐇 RabbitMQ connected successfully');
+
+            // Setup event consumers only if connected
+            await RabbitMQService.setupConsumers();
+            Logger.info('RabbitMQ consumers setup successfully');
         } else {
             console.error('❌ RabbitMQ connection failed');
-        }
-
-        // Setup event consumers
-        await RabbitMQService.setupConsumers();
-        Logger.info('RabbitMQ consumers setup successfully');
-
-        // Test database connection
+            Logger.warn('RabbitMQ not connected - service will continue without event processing');
+        }        // Test database connection
         await prisma.$connect();
         Logger.info('Database connected successfully');
 
