@@ -53,29 +53,54 @@ app.use(limiter);
 // Health check endpoint
 app.get('/health', async (req, res) => {
     try {
-        // Check database connection
-        await prisma.$queryRaw`SELECT 1`;
+        // Check database connection with timeout
+        const dbPromise = prisma.$queryRaw`SELECT 1`;
+        const dbTimeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Database timeout')), 5000)
+        );
+
+        await Promise.race([dbPromise, dbTimeout]);
 
         // Check RabbitMQ connection
         const rabbitmqHealth = RabbitMQService.isConnected();
 
-        res.status(200).json({
+        // Check Redis connection (non-blocking)
+        let redisHealth = 'unknown';
+        try {
+            redisHealth = await RedisService.ping() ? 'connected' : 'disconnected';
+        } catch (redisError) {
+            redisHealth = 'error';
+        }
+
+        const healthData = {
             status: 'healthy',
             service: 'work-history-service',
             timestamp: new Date().toISOString(),
             version: '1.0.0',
+            environment: process.env.NODE_ENV || 'development',
             checks: {
                 database: 'connected',
-                rabbitmq: rabbitmqHealth ? 'connected' : 'disconnected'
+                rabbitmq: rabbitmqHealth ? 'connected' : 'disconnected',
+                redis: redisHealth
+            },
+            urls: {
+                reputation: process.env.REPUTATION_SERVICE_URL || 'not-configured'
             }
-        });
+        };
+
+        res.status(200).json(healthData);
     } catch (error) {
         Logger.error('Health check failed:', error);
         res.status(503).json({
             status: 'unhealthy',
             service: 'work-history-service',
             timestamp: new Date().toISOString(),
-            error: error.message
+            error: error.message,
+            checks: {
+                database: 'error',
+                rabbitmq: RabbitMQService.isConnected() ? 'connected' : 'disconnected',
+                redis: 'unknown'
+            }
         });
     }
 });

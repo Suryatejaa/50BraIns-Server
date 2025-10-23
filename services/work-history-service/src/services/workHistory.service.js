@@ -165,31 +165,62 @@ class WorkHistoryService {
      */
     async getUserWorkSummary(userId) {
         try {
-            // const cacheKey = `work_summary:${userId}`;
+            Logger.info(`Fetching work summary for user: ${userId}`);
 
-            // Check cache first
-            // const cached = await RedisService.get(cacheKey);
-            // if (cached) {
-            //     return JSON.parse(cached);
-            // }
+            // Add timeout to database operations
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Database query timeout')), 10000)
+            );
 
-            let summary = await this.prisma.workSummary.findUnique({
+            // Get summary with timeout protection
+            const summaryPromise = this.prisma.workSummary.findUnique({
                 where: { userId }
             });
 
+            let summary = await Promise.race([summaryPromise, timeoutPromise]);
+
             if (!summary) {
-                // Create initial summary
-                summary = await this.createInitialWorkSummary(userId);
+                Logger.info(`No work summary found for user ${userId}, creating initial summary`);
+                // Create initial summary with timeout protection
+                const createPromise = this.createInitialWorkSummary(userId);
+                summary = await Promise.race([createPromise, timeoutPromise]);
             }
 
-            // Cache for 1 hour
-            // await RedisService.setex(cacheKey, 3600, JSON.stringify(summary));
-
+            Logger.info(`Successfully fetched work summary for user: ${userId}`);
             return summary;
 
         } catch (error) {
-            Logger.error('Error fetching work summary:', error);
-            throw error;
+            Logger.errorWithContext('Error fetching work summary', error, { userId });
+
+            // Return a default summary instead of throwing
+            const defaultSummary = {
+                userId,
+                totalProjects: 0,
+                completedProjects: 0,
+                averageRating: 0,
+                totalRatings: 0,
+                fiveStarCount: 0,
+                fourStarCount: 0,
+                onTimeDeliveryRate: 0,
+                averageDeliveryTime: 0,
+                fastestDelivery: null,
+                totalEarnings: 0,
+                averageProjectValue: 0,
+                highestProjectValue: 0,
+                currentStreak: 0,
+                longestStreak: 0,
+                lastCompletionDate: null,
+                topSkills: [],
+                topCategories: [],
+                lastActiveDate: new Date(),
+                verifiedProjectCount: 0,
+                verificationLevel: 'unverified',
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            Logger.info(`Returning default work summary for user: ${userId}`);
+            return defaultSummary;
         }
     }
 
