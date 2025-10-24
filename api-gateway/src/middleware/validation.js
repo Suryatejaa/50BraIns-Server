@@ -50,8 +50,8 @@ const validationSchemas = {
                 'string.min': 'Last name must be at least 1 character long',
                 'string.max': 'Last name cannot exceed 50 characters'
             }),
-            username: Joi.string().alphanum().min(3).max(30).optional().messages({
-                'string.alphanum': 'Username must only contain letters and numbers',
+            username: Joi.string().min(3).max(30).pattern(/^[a-zA-Z0-9._-]+$/).optional().messages({
+                'string.pattern.base': 'Username can only contain letters, numbers, periods, underscores, and hyphens',
                 'string.min': 'Username must be at least 3 characters long',
                 'string.max': 'Username cannot exceed 30 characters'
             }),
