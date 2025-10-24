@@ -154,5 +154,21 @@ module.exports = {
         }
         const users = await userService.getUsersByIdsMinimal(userIds.slice(0, 200));
         res.status(StatusCodes.OK).json({ success: true, data: users });
-    }
+    },
+
+    /**
+     * Internal: batch get users by usernames (minimal fields, for internal services)
+     */
+    async getUsersByUsernamesInternal(req, res) {
+        const { usernames } = req.body || {};
+        console.log('usernames', req.body);
+        if (!Array.isArray(usernames) || usernames.length === 0) {
+            console.log('usernames array is required');
+            return res.status(StatusCodes.BAD_REQUEST).json({ success: false, error: 'usernames array is required' });
+        }
+        const users = await userService.getUsersByUsernamesMinimal(usernames.slice(0, 200));
+        res.status(StatusCodes.OK).json({ success: true, data: users });
+    },
+
+   
 };

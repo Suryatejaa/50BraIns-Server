@@ -17,5 +17,6 @@ router.get('/profiles/:userId', publicController.getPublicUserProfile);
 router.post('/profiles/resolve', publicController.resolveUsers);
 // Internal batch ids lookup (used by clan-service enrichment)
 router.post('/profiles/internal/by-ids', publicController.getUsersByIdsInternal);
+router.post('/profiles/internal/by-usernames', publicController.getUsersByUsernamesInternal);
 
 module.exports = router;

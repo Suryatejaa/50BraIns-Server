@@ -682,5 +682,37 @@ module.exports = {
             logger.error('Error fetching users by IDs (minimal):', error);
             throw error;
         }
-    }
+    },
+
+    getUsersByUsernamesMinimal: async (usernames = []) => {
+        try {
+            if (!Array.isArray(usernames) || usernames.length === 0) return [];
+            const users = await prisma.user.findMany({
+                where: { username: { in: usernames } },
+                select: {
+                    id: true,
+                    username: true,
+                    firstName: true,
+                    lastName: true,
+                    roles: true,
+                    profilePicture: true,
+                    location: true,
+                    email: true,
+                    showContact: true,
+                    phone: true,
+                    instagramHandle: true,
+                    twitterHandle: true,
+                    linkedinHandle: true,
+                    youtubeHandle: true,
+                    website: true,
+                    bio: true,
+                    createdAt: true,
+                }
+            });
+            return users;
+        } catch (error) {
+            logger.error('Error fetching users by usernames (minimal):', error);
+            throw error;
+        }
+    },
 };
