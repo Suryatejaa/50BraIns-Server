@@ -60,8 +60,12 @@ const emailSchema = Joi.object({
  * Register a new user
  */
 const register = catchAsync(async (req, res) => {
+    // Sanitize body for logging (remove sensitive fields)
+    const sanitizedBody = req.body ? { ...req.body } : {};
+    if (sanitizedBody.password) sanitizedBody.password = '[REDACTED]';
+
     logger.info('Register endpoint hit', {
-        body: req.body,
+        body: sanitizedBody,
         ip: req.ip,
         userAgent: req.get('User-Agent')
     });
@@ -255,6 +259,64 @@ const logout = catchAsync(async (req, res, next) => {
     }
 });
 
+const deactivateAccount = catchAsync(async (req, res, next) => {
+    try {
+        const userId = req.user?.id;
+        const password = req.body.password;
+        if (!userId) {
+            throw new ValidationError('User ID is required for account deactivation');
+        }
+        if (!password) {
+            throw new ValidationError('Password is required for account deactivation');
+        }
+        await authService.deactivateAccount(userId, password);
+        res.clearCookie('refreshToken');
+        res.clearCookie('accessToken');
+        logger.info('User account deactivated successfully', {
+            userId,
+            ip: req.ip
+        });
+        res.status(200).json({
+            success: true,
+            message: 'Account deactivated successfully'
+        });
+    } catch (err) {
+        if (err instanceof ValidationError) {
+            return res.status(400).json({ success: false, error: err.message });
+        }
+        if (err instanceof AuthError) {
+            return res.status(401).json({ success: false, error: err.message });
+        }
+        next(err);
+    }
+});
+
+const deleteAccount = catchAsync(async (req, res, next) => {
+    try {
+        const userId = req.user?.id;
+        const password = req.body.password;
+        if (!userId) {
+            throw new ValidationError('User ID is required for account deletion');
+        }
+        await authService.deleteAccount(userId, password);
+        res.clearCookie('refreshToken');
+        res.clearCookie('accessToken');
+        logger.info('User account deleted successfully', {
+            userId,
+            ip: req.ip
+        });
+        res.status(200).json({ success: true, message: 'Account deleted successfully' });
+    } catch (err) {
+        if (err instanceof ValidationError) {
+            return res.status(400).json({ success: false, error: err.message });
+        }
+        if (err instanceof AuthError) {
+            return res.status(401).json({ success: false, error: err.message });
+        }
+        next(err);
+    }
+});
+
 const logoutAll = catchAsync(async (req, res, next) => {
     try {
         const userId = req.user?.id;
@@ -358,6 +420,9 @@ const verifyEmail = catchAsync(async (req, res) => {
     });
 });
 
+
+
+
 /**
  * Setup 2FA (placeholder for future implementation)
  */
@@ -414,7 +479,9 @@ module.exports = {
     verifyEmail,
     setup2FA,
     verify2FA,
-    disable2FA
+    disable2FA,
+    deactivateAccount,
+    deleteAccount
 };
 
 // Global error handler for async routes (for direct use in tests or if not handled by middleware)

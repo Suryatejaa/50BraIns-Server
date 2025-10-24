@@ -304,11 +304,18 @@ function validationMiddleware(req, res, next) {
 
         next();
     } catch (error) {
+        // Sanitize body for logging (remove sensitive fields)
+        const sanitizedBody = req.body ? { ...req.body } : {};
+        if (sanitizedBody.password) sanitizedBody.password = '[REDACTED]';
+        if (sanitizedBody.currentPassword) sanitizedBody.currentPassword = '[REDACTED]';
+        if (sanitizedBody.newPassword) sanitizedBody.newPassword = '[REDACTED]';
+        if (sanitizedBody.confirmPassword) sanitizedBody.confirmPassword = '[REDACTED]';
+
         logger.warn(`Validation failed for ${req.method} ${req.path}`, {
             error: error.message,
             details: error.details,
             requestId: req.requestId,
-            body: req.body,
+            body: sanitizedBody,
             query: req.query,
             params: req.params,
         });

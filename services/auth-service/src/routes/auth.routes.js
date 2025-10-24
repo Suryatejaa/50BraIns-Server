@@ -25,4 +25,7 @@ router.post('/2fa/setup', authenticate, authController.setup2FA);
 router.post('/2fa/verify', authenticate, authController.verify2FA);
 router.post('/2fa/disable', authenticate, authController.disable2FA);
 
+router.post('/deactivate-account', authenticate, authController.deactivateAccount);
+router.post('/delete-account', authenticate, authController.deleteAccount);
+
 module.exports = router;

@@ -102,11 +102,54 @@ const createUserCache = async (userData) => {
     }
 };
 
+// Deactivate user function can be added here if needed
+const deactivateUserCache = async (userId) => {
+    try {
+        // Mark user as inactive
+        await prisma.user.update({
+            where: { id: userId },
+            data: { isActive: false }
+        });
+
+        logger.info(`User deactivated: ${userId}`);
+        return { success: true, userId };
+    } catch (error) {
+        logger.error(`Error deactivating user ${userId}:`, error);
+        throw error;
+    }
+};
+
+const reactivateUserCache = async (userId) => {
+    try {
+        // Mark user as active
+        await prisma.user.update({
+            where: { id: userId },
+            data: { isActive: true }
+        });
+        logger.info(`User reactivated: ${userId}`);
+        return { success: true, userId };
+    }
+    catch (error) {
+        logger.error(`Error reactivating user ${userId}:`, error);
+        throw error;
+    }
+};
+
 /**
  * Delete user and related data
  */
 const deleteUserCache = async (userId) => {
     try {
+        // Check if user exists first
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!existingUser) {
+            logger.info(`User ${userId} not found in user-service database, skipping deletion`);
+            return { success: true, userId, message: 'User not found, no deletion needed' };
+        }
+
         // Delete in transaction to ensure consistency
         await prisma.$transaction(async (tx) => {
             // Delete analytics if table exists
@@ -132,7 +175,7 @@ const deleteUserCache = async (userId) => {
                 logger.warn(`Could not delete favorites for user ${userId}:`, error);
             }
 
-            // Delete user
+            // Delete user (only if it exists)
             await tx.user.delete({
                 where: { id: userId }
             });
@@ -141,6 +184,12 @@ const deleteUserCache = async (userId) => {
         logger.info(`User and related data deleted for user ${userId}`);
         return { success: true, userId };
     } catch (error) {
+        // Handle the specific case where user doesn't exist
+        if (error.code === 'P2025') {
+            logger.info(`User ${userId} not found during deletion, considering it already deleted`);
+            return { success: true, userId, message: 'User already deleted or not found' };
+        }
+
         logger.error(`Error deleting user ${userId}:`, error);
         throw error;
     }
@@ -420,6 +469,8 @@ module.exports = {
     syncUserFromAuthService,
     createUserCache,
     deleteUserCache,
+    deactivateUserCache,
+    reactivateUserCache,
     syncAllUsersFromAuthService,
     syncSingleUserFromAuthService,
     getSyncStatus,

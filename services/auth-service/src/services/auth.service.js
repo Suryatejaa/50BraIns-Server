@@ -50,7 +50,9 @@ class AuthService {
                 }
 
                 //If roles include crew or influencer then instagramHandle is required
-                console.log('Data from userData:', userData);
+                const sanitizedUserData = { ...userData };
+                if (sanitizedUserData.password) sanitizedUserData.password = '[REDACTED]';
+                console.log('Data from userData:', sanitizedUserData);
                 if (finalRoles.includes('INFLUENCER') || finalRoles.includes('CREW')) {
                     if (!instagramHandle || instagramHandle.trim() === '') {
                         throw new ValidationError('Instagram handle is required when roles include INFLUENCER or CREW');
@@ -209,7 +211,16 @@ class AuthService {
 
             // Handle missing columns gracefully
             if (user.isActive === false) {
-                throw new AuthError('Account is deactivated');
+                //activate the account
+                const updatedUser = await prisma.user.update({
+                    where: { id: user.id },
+                    data: { isActive: true }
+                });
+                logger.info(`User account activated: ${updatedUser.email}`);
+
+                //publish account activation event to RabbitMQ
+                const rabbitmqService = require('../utils/rabbitmq');
+                await rabbitmqService.publishEvent('user.reactivated', { userId: updatedUser.id });
             }
 
             if (user.isBanned === true) {
@@ -343,6 +354,85 @@ class AuthService {
         } catch (error) {
             logger.error('Error in logout service:', error);
             console.error('DEBUG LOGOUT ERROR:', error.message, error.stack);
+            throw error;
+        }
+    }
+
+    async deactivateAccount(userId, password) {
+        try {
+            if (!userId) {
+                throw new ValidationError('User ID is required for account deactivation');
+            }
+            if (!password) {
+                throw new ValidationError('Password is required for account deactivation');
+            }
+
+            // Verify user credentials
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user) {
+                throw new AuthError('User not found');
+            }
+
+            const isPasswordValid = await bcrypt.compare(password, user.password);
+            if (!isPasswordValid) {
+                throw new AuthError('Invalid password');
+            }
+
+            // Deactivate user account
+            await prisma.user.update({
+                where: { id: userId },
+                data: { isActive: false }
+            });
+
+            //publish account deactivation event to RabbitMQ
+            const rabbitmqService = require('../utils/rabbitmq');
+            await rabbitmqService.publishEvent('user.deactivated', { userId });
+
+            logger.info(`User account deactivated: ${user.email}`);
+            return { success: true,
+                message: 'User account deactivated successfully'
+             };
+        } catch (error) {
+            logger.error('Error in deactivate account service:', error);
+            throw error;
+        }
+    }
+
+    async deleteAccount(userId, password) {
+        try {
+            if (!userId) {
+                throw new ValidationError('User ID is required for account deletion');
+            }
+            if (!password) {
+                throw new ValidationError('Password is required for account deletion');
+            }
+
+            // Verify user credentials
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user) {
+                throw new AuthError('User not found');
+            }
+
+            const isPasswordValid = await bcrypt.compare(password, user.password);
+            if (!isPasswordValid) {
+                throw new AuthError('Invalid password');
+            }
+
+            // Delete user account
+            await prisma.user.delete({
+                where: { id: userId }
+            });
+
+            //publish account deletion event to RabbitMQ
+            const rabbitmqService = require('../utils/rabbitmq');
+            await rabbitmqService.publishEvent('user.deleted', { userId });
+
+            logger.info(`User account deleted: ${user.email}`);
+            return { success: true,
+                message: 'User account deleted successfully'
+             };
+        } catch (error) {
+            logger.error('Error in delete account service:', error);
             throw error;
         }
     }

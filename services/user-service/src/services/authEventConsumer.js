@@ -92,6 +92,12 @@ class AuthEventConsumer {
                             case 'user.updated':
                                 result = await eventHandlerService.handleUserUpdated(content);
                                 break;
+                            case 'user.deactivated':
+                                result = await eventHandlerService.handleUserDeactivated(content);
+                                break;
+                            case 'user.reactivated':
+                                result = await eventHandlerService.handleUserReactivated(content);
+                                break;
                             case 'user.deleted':
                                 result = await eventHandlerService.handleUserDeleted(content);
                                 break;
