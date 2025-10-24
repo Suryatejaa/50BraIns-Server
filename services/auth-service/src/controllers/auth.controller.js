@@ -20,7 +20,7 @@ const registerSchema = Joi.object({
         'string.max': 'Username cannot exceed 30 characters'
     }),
     roles: Joi.array().items(Joi.string().valid('USER', 'INFLUENCER', 'BRAND', 'CREW', 'ADMIN', 'SUPER_ADMIN', 'MODERATOR')).min(1).default(['USER']),
-    instagramHandle: Joi.string().optional().messages({
+    instagramHandle: Joi.string().allow('').optional().messages({
         'string.base': 'Instagram handle must be a string'
     })
 });

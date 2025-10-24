@@ -52,7 +52,7 @@ class AuthService {
                 //If roles include crew or influencer then instagramHandle is required
                 console.log('Data from userData:', userData);
                 if (finalRoles.includes('INFLUENCER') || finalRoles.includes('CREW')) {
-                    if (!instagramHandle) {
+                    if (!instagramHandle || instagramHandle.trim() === '') {
                         throw new ValidationError('Instagram handle is required when roles include INFLUENCER or CREW');
                     }
                 }
@@ -118,7 +118,7 @@ class AuthService {
                     emailVerified: false,
                     createdAt: new Date(),
                     updatedAt: new Date(),
-                    ...(instagramHandle && { instagramHandle }),
+                    ...(instagramHandle && instagramHandle.trim() !== '' && { instagramHandle: instagramHandle.trim() }),
                     ...additionalFields
                 };
 
