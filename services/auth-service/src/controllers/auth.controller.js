@@ -19,7 +19,10 @@ const registerSchema = Joi.object({
         'string.min': 'Username must be at least 3 characters long',
         'string.max': 'Username cannot exceed 30 characters'
     }),
-    roles: Joi.array().items(Joi.string().valid('USER', 'INFLUENCER', 'BRAND', 'CREW', 'ADMIN', 'SUPER_ADMIN', 'MODERATOR')).min(1).default(['USER'])
+    roles: Joi.array().items(Joi.string().valid('USER', 'INFLUENCER', 'BRAND', 'CREW', 'ADMIN', 'SUPER_ADMIN', 'MODERATOR')).min(1).default(['USER']),
+    instagramHandle: Joi.string().optional().messages({
+        'string.base': 'Instagram handle must be a string'
+    })
 });
 
 const loginSchema = Joi.object({
@@ -73,6 +76,7 @@ const register = catchAsync(async (req, res) => {
     logger.info('Starting user registration process', { email: value.email });
 
     // Register user through service
+    console.log('Registering user with data:', value);
     const user = await authService.register(value);
 
     console.log('User registered:', user);

@@ -245,14 +245,33 @@ process.on('uncaughtException', (err) => {
 // Start server
 const startServer = async () => {
     try {
+        console.log('🔧 Starting server initialization...');
+
+        // Test database connection
+        console.log('🔧 Testing database connection...');
+        try {
+            const { PrismaClient } = require('@prisma/client');
+            const testPrisma = new PrismaClient();
+            await testPrisma.$queryRaw`SELECT 1`;
+            await testPrisma.$disconnect();
+            console.log('🔧 Database connection test passed');
+            logger.info('✅ Database connected successfully');
+        } catch (dbError) {
+            logger.error('❌ Database connection failed:', dbError.message);
+            console.log('🔧 Database connection failed, continuing anyway');
+        }
+
         // Connect to Redis for caching and sessions (non-blocking)
         if (NODE_ENV !== 'test') {
+            console.log('🔧 Connecting to Redis...');
             connectRedis().catch(err => {
                 logger.warn('Redis connection failed, continuing without cache:', err.message);
             });
         }
 
+        console.log('🔧 Starting HTTP server...');
         const server = app.listen(PORT, () => {
+            console.log('🔧 HTTP server started successfully');
             logger.info(`🚀 50BraIns Auth Service running on port ${PORT} in ${NODE_ENV} mode`);
             logger.info(`📊 Health check: http://localhost:${PORT}/health`);
             logger.info(`📋 API Documentation: http://localhost:${PORT}/api-docs`);
@@ -262,14 +281,26 @@ const startServer = async () => {
             }
         });
 
-        // Connect to RabbitMQ
-        const rabbitmqConnection = await rabbitmqService.connect();
-        if (rabbitmqConnection) {
-            logger.info('🐇 Connected to RabbitMQ successfully');
-        }else {
-            logger.warn('⚠️  RabbitMQ connection failed, continuing without message broker');
-        }
+        console.log('🔧 Starting RabbitMQ connection...');
+        // Connect to RabbitMQ (completely non-blocking - don't await)
+        const connectRabbitMQ = async () => {
+            try {
+                const rabbitmqConnection = await rabbitmqService.connect();
+                if (rabbitmqConnection) {
+                    logger.info('🐇 Connected to RabbitMQ successfully');
+                } else {
+                    logger.warn('⚠️ RabbitMQ connection failed, continuing without message broker');
+                }
+            } catch (rabbitmqError) {
+                logger.warn('⚠️ RabbitMQ connection error, continuing without message broker:', rabbitmqError.message);
+            }
+        };
 
+        // Start RabbitMQ connection in background
+        connectRabbitMQ();
+        console.log('🔧 RabbitMQ connection started in background');
+
+        console.log('🔧 Setting up server error handlers...');
         // Handle server errors
         server.on('error', (error) => {
             if (error.syscall !== 'listen') {
@@ -288,13 +319,14 @@ const startServer = async () => {
             }
         });
 
+        console.log('🔧 Server initialization completed');
+
     } catch (error) {
+        console.error('🔧 Server initialization failed:', error);
         logger.error('Failed to start server:', error);
         process.exit(1);
     }
-};
-
-// Only start server if not in test mode
+};// Only start server if not in test mode
 if (NODE_ENV !== 'test') {
     startServer();
 }

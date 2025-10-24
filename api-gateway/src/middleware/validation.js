@@ -42,6 +42,11 @@ const validationSchemas = {
         body: Joi.object({
             email: commonSchemas.email,
             password: commonSchemas.password.required(),
+            username: Joi.string().alphanum().min(3).max(30).optional().messages({
+                'string.alphanum': 'Username must only contain letters and numbers',
+                'string.min': 'Username must be at least 3 characters long',
+                'string.max': 'Username cannot exceed 30 characters'
+            }),
             roles: Joi.array()
                 .items(
                     Joi.string().valid(
@@ -58,6 +63,9 @@ const validationSchemas = {
                 )
                 .min(1)
                 .default(["USER"]),
+            instagramHandle: Joi.string().optional().messages({
+                'string.base': 'Instagram handle must be a string'
+            })
         }),
     },
 

@@ -29,7 +29,7 @@ class AuthService {
 
         const registerPromise = async () => {
             try {
-                const { email, password, username: inputUsername, role, roles = [], ...additionalFields } = userData;
+                const { email, password, username: inputUsername, role, roles = [], instagramHandle, ...additionalFields } = userData;
 
                 // Define valid roles
                 const validRoles = ['USER', 'INFLUENCER', 'BRAND', 'CREW', 'ADMIN', 'SUPER_ADMIN', 'MODERATOR'];
@@ -47,6 +47,14 @@ class AuthService {
                     finalRoles = roles; // Multiple roles
                 } else {
                     finalRoles = ['USER']; // Default
+                }
+
+                //If roles include crew or influencer then instagramHandle is required
+                console.log('Data from userData:', userData);
+                if (finalRoles.includes('INFLUENCER') || finalRoles.includes('CREW')) {
+                    if (!instagramHandle) {
+                        throw new ValidationError('Instagram handle is required when roles include INFLUENCER or CREW');
+                    }
                 }
 
                 // Always ensure USER role is included
@@ -110,6 +118,7 @@ class AuthService {
                     emailVerified: false,
                     createdAt: new Date(),
                     updatedAt: new Date(),
+                    ...(instagramHandle && { instagramHandle }),
                     ...additionalFields
                 };
 
@@ -143,6 +152,7 @@ class AuthService {
                         email: createdUser.email,
                         username: createdUser.username,
                         roles: createdUser.roles,
+                        instagramHandle: instagramHandle || null,
                         isActive: createdUser.isActive,
                         status: 'ACTIVE',
                         emailVerified: createdUser.emailVerified,

@@ -11,17 +11,6 @@ try {
 
     prisma = new PrismaClient(datasourceConfig);
 
-    // Test the connection only in non-test environments
-    if (process.env.NODE_ENV !== 'test') {
-        prisma.$connect()
-            .then(() => {
-                logger.info('✅ Database connected successfully');
-            })
-            .catch((error) => {
-                logger.error('❌ Database connection failed:', error);
-            });
-    }
-
 } catch (error) {
     logger.error('❌ Failed to initialize Prisma client:', error);
     // Fallback to null - will be handled in controllers

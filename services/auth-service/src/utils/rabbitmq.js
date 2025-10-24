@@ -14,8 +14,14 @@ class RabbitMQService {
         try {
             console.log('🐰 [Auth Service] Connecting to RabbitMQ...');
 
-            // Create connection
-            this.connection = await amqp.connect(this.url);
+            // Add connection timeout
+            const connectPromise = amqp.connect(this.url);
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('RabbitMQ connection timeout')), 5000)
+            );
+
+            // Create connection with timeout
+            this.connection = await Promise.race([connectPromise, timeoutPromise]);
             console.log('✅ [Auth Service] RabbitMQ connection established');
 
             // Create channel
@@ -45,18 +51,24 @@ class RabbitMQService {
                 }, 5000);
             });
 
+            return true; // Return success
+
         } catch (error) {
             console.error('❌ [Auth Service] Failed to connect to RabbitMQ:', error);
             this.isConnected = false;
+
             // Don't attempt to reconnect in development if RabbitMQ is not available
             if (process.env.NODE_ENV === 'development') {
                 console.log('⚠️ [Auth Service] Running in development mode without RabbitMQ');
-                return;
+                return false; // Return failure but don't throw
             }
-            // Attempt to reconnect after 5 seconds
+
+            // Attempt to reconnect after 5 seconds in production
             setTimeout(() => {
                 this.connect();
             }, 5000);
+
+            return false; // Return failure
         }
     }
 
