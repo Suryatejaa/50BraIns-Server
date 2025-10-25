@@ -1,25 +1,78 @@
 // src/services/search.service.js
 const { prisma } = require('../config/database');
 const logger = require('../utils/logger');
+const axios = require('axios');
+
+const REPUTATION_SERVICE_URL = process.env.REPUTATION_SERVICE_URL || 'http://localhost:4006';
 
 /**
- * Search users with name/username filtering
+ * Search users with name/username filtering and reputation data
  */
-const searchUsers = async ({ query, page = 1, limit = 10 }) => {
+const searchUsers = async ({
+    query,
+    page = 1,
+    limit = 10,
+    sortBy = 'score',
+    sortOrder = 'desc',
+    roles,
+    location,
+    verified,
+    active = true,
+    minScore,
+    maxScore,
+    tier
+}) => {
     try {
         const skip = (page - 1) * limit;
         const where = {
-            isActive: true,
-            // emailVerified: true
+            isActive: active === true || active === 'true'
         };
+
+        // Add roles filter
+        if (roles) {
+            const rolesArray = Array.isArray(roles) ? roles : roles.split(',');
+            where.roles = { hasSome: rolesArray.map(r => r.toUpperCase()) };
+        }
+
+        // Add location filter
+        if (location) {
+            where.location = { contains: location, mode: 'insensitive' };
+        }
+
+        // Add verified filter
+        if (verified !== undefined) {
+            where.emailVerified = verified === 'true' || verified === true;
+        }
 
         // Add name/username search if query provided
         if (query && query.trim()) {
             where.OR = [
                 { firstName: { contains: query, mode: 'insensitive' } },
                 { lastName: { contains: query, mode: 'insensitive' } },
-                { username: { contains: query, mode: 'insensitive' } }
+                { username: { contains: query, mode: 'insensitive' } },
+                { bio: { contains: query, mode: 'insensitive' } }
             ];
+        }
+
+        // Handle sorting
+        let orderBy = {};
+        switch (sortBy) {
+            case 'alphabetical':
+                orderBy = { username: sortOrder };
+                break;
+            case 'date':
+                orderBy = { createdAt: sortOrder };
+                break;
+            case 'activity':
+                orderBy = { lastActiveAt: sortOrder };
+                break;
+            case 'relevance':
+                orderBy = { updatedAt: sortOrder };
+                break;
+            case 'score':
+            default:
+                orderBy = { createdAt: 'desc' }; // Will sort by reputation later
+                break;
         }
 
         // Debug: log the final where filter
@@ -33,21 +86,139 @@ const searchUsers = async ({ query, page = 1, limit = 10 }) => {
             where,
             select: {
                 id: true,
+                username: true,
                 firstName: true,
                 lastName: true,
-                username: true,
+                email: true,
                 profilePicture: true,
                 bio: true,
                 location: true,
                 roles: true,
-                createdAt: true
+                isActive: true,
+                emailVerified: true,
+                createdAt: true,
+                lastActiveAt: true,
+                _count: {
+                    select: {
+                        refreshTokens: true,
+                        equipment: true
+                    }
+                }
             },
             skip,
             take: limit,
-            orderBy: { createdAt: 'desc' }
+            orderBy
         });
 
-        return { users, total };
+        // Fetch reputation data for all users
+        let enrichedUsers = users;
+        try {
+            // Get reputation data for all users
+            const userIds = users.map(user => user.id);
+            const reputationPromises = userIds.map(async (userId) => {
+                try {
+                    const response = await axios.get(`${REPUTATION_SERVICE_URL}/api/reputation/${userId}`, {
+                        timeout: 3000
+                    });
+                    return response.data.success ? response.data.data : null;
+                } catch (error) {
+                    logger.warn(`Failed to fetch reputation for user ${userId}:`, error.message);
+                    return null;
+                }
+            });
+
+            const reputationData = await Promise.all(reputationPromises);
+            const reputationMap = {};
+
+            reputationData.forEach((rep, index) => {
+                if (rep) {
+                    reputationMap[userIds[index]] = rep;
+                }
+            });
+
+            // Enrich users with reputation data
+            enrichedUsers = users.map(user => ({
+                ...user,
+                reputation: reputationMap[user.id] || {
+                    finalScore: 0,
+                    tier: 'BRONZE',
+                    badges: [],
+                    ranking: { global: null, tier: null }
+                }
+            }));
+
+            // Apply reputation-based filters
+            enrichedUsers = enrichedUsers.filter(user => {
+                if (minScore && user.reputation.finalScore < parseFloat(minScore)) return false;
+                if (maxScore && user.reputation.finalScore > parseFloat(maxScore)) return false;
+                if (tier && user.reputation.tier !== tier.toUpperCase()) return false;
+                return true;
+            });
+
+            // Sort by score if requested
+            if (sortBy === 'score') {
+                enrichedUsers.sort((a, b) => {
+                    const scoreA = a.reputation.finalScore || 0;
+                    const scoreB = b.reputation.finalScore || 0;
+                    return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+                });
+            }
+
+        } catch (error) {
+            logger.error('Error fetching reputation data for search:', error);
+            // Continue without reputation data
+        }
+
+        // Format response with ranks
+        const formattedUsers = enrichedUsers.map((user, index) => ({
+            rank: skip + index + 1, // Calculate rank based on pagination
+            id: user.id,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            fullName: `${user.firstName} ${user.lastName}`.trim(),
+            profilePicture: user.profilePicture,
+            bio: user.bio,
+            location: user.location,
+            roles: user.roles,
+            isActive: user.isActive,
+            emailVerified: user.emailVerified,
+            createdAt: user.createdAt,
+            lastActiveAt: user.lastActiveAt,
+            tokenCount: user._count?.refreshTokens || 0,
+            equipmentCount: user._count?.equipment || 0,
+            reputation: user.reputation || {
+                finalScore: 0,
+                tier: 'BRONZE',
+                badges: [],
+                ranking: { global: null, tier: null }
+            }
+        }));
+
+        return {
+            users: formattedUsers,
+            total,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / parseInt(limit)),
+                hasNext: skip + parseInt(limit) < total,
+                hasPrev: parseInt(page) > 1
+            },
+            filters: {
+                query,
+                sortBy,
+                sortOrder,
+                roles: roles?.split(',') || [],
+                location,
+                verified,
+                active,
+                minScore,
+                maxScore,
+                tier
+            }
+        };
     } catch (error) {
         logger.error('Error searching users:', error);
         throw error;
