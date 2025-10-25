@@ -113,7 +113,7 @@ class GigEventConsumer {
             const gig = await this.prisma.gig.findUnique({
                 where: { id: gigId },
                 include: {
-                    submission: {
+                    submissions: {
                         where: { id: submissionId }
                     }
                 }

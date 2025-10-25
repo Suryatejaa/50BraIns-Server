@@ -3,6 +3,7 @@ const { prisma } = require('../config/database');
 const emailService = require('../utils/emailService');
 const logger = require('../utils/logger');
 const WebSocketService = require('../utils/websocket');
+const axios = require('axios');
 
 class NotificationConsumer {
     constructor() {
@@ -84,8 +85,6 @@ class NotificationConsumer {
     async handleGigApplied(eventData) {
         try {
             const { gigId, applicantId, gigOwnerId, gigTitle, applicantName } = eventData;
-
-
 
             // Notify gig owner about new application
             await this.createAndSendNotification({
@@ -189,6 +188,86 @@ class NotificationConsumer {
             logger.notification('Gig application rejected notification sent', { gigId, applicationId, applicantId, applicantType });
         } catch (error) {
             logger.error('Error handling gig application rejected notification:', error);
+        }
+    }
+
+    async handleGigUpdated(eventData) {
+        try {
+            console.log('📝 [Notification Service] Handling gig_updated event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig updated event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig updated notification:', error);
+        }
+    }
+
+    async handleGigDeleted(eventData) {
+        try {
+            console.log('🗑️ [Notification Service] Handling gig_deleted event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig deleted event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig deleted notification:', error);
+        }
+    }
+
+    async handleGigPublished(eventData) {
+        try {
+            console.log('📢 [Notification Service] Handling gig_published event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig published event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig published notification:', error);
+        }
+    }
+
+    async handleGigClosed(eventData) {
+        try {
+            console.log('🔒 [Notification Service] Handling gig_closed event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig closed event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig closed notification:', error);
+        }
+    }
+
+    async handleGigBoosted(eventData) {
+        try {
+            console.log('🚀 [Notification Service] Handling gig_boosted event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig boosted event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig boosted notification:', error);
+        }
+    }
+
+    async handleGigMilestoneCreated(eventData) {
+        try {
+            console.log('🎯 [Notification Service] Handling gig_milestone_created event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig milestone created event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig milestone created notification:', error);
+        }
+    }
+
+    async handleGigTaskCreated(eventData) {
+        try {
+            console.log('📋 [Notification Service] Handling gig_task_created event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig task created event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig task created notification:', error);
+        }
+    }
+
+    async handleGigTaskUpdated(eventData) {
+        try {
+            console.log('📝 [Notification Service] Handling gig_task_updated event:', eventData);
+            // For now, just log the event - can add specific notifications if needed
+            logger.notification('Gig task updated event processed', { gigId: eventData.gigId });
+        } catch (error) {
+            logger.error('Error handling gig task updated notification:', error);
         }
     }
 
@@ -891,11 +970,21 @@ class NotificationConsumer {
         try {
             console.log('📋 [Notification Service] Handling work_submitted event:', eventData);
 
-            const { gigId, userId, gigTitle, gigOwnerId, submissionId } = eventData;
+            const { gigId, gigTitle, recipientId, submittedById, submissionTitle } = eventData;
+
+            // Notify brand about work submission
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'ENGAGEMENT',
+                category: 'GIG',
+                title: '📋 Work Submitted!',
+                message: `Work has been submitted for your gig "${gigTitle}" - "${submissionTitle}". Review the submission now.`,
+                metadata: { gigId, submittedById, submissionTitle, eventType: 'work.submitted' }
+            });
 
             // This is handled in work history service - just log for now
             console.log('✅ [Notification Service] Work submitted event logged for work history service');
-            logger.notification('Work submitted event processed for work history', { gigId, userId, submissionId });
+            logger.notification('Work submitted event processed for work history', { gigId, submittedById, submissionId });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling work submitted event:', error);
             logger.error('Error handling work submitted event:', error);
@@ -988,8 +1077,7 @@ class NotificationConsumer {
         try {
             console.log('✅ [Notification Service] Handling application_confirmed event:', eventData);
 
-
-            const { gigId, gigTitle, applicantId, applicantName } = eventData;
+            const { gigId, gigTitle, applicantId, gigOwnerId, applicantName } = eventData;
 
             // Notify applicant that their application was confirmed
             await this.createAndSendNotification({
@@ -1001,6 +1089,75 @@ class NotificationConsumer {
                 metadata: { gigId, eventType: 'application.confirmed' }
             });
 
+            // BACKUP NOTIFICATION SYSTEM: Create brand notification if primary notification system failed
+            // This acts as a fallback when application_submitted/new_application_received events don't reach notification service
+            if (gigOwnerId) {
+                try {
+                    // Check if brand notification was already created in last 15 seconds to avoid duplicates
+                    const fifteenSecondsAgo = new Date(Date.now() - 15000);
+                    const existingNotification = await prisma.notification.findFirst({
+                        where: {
+                            userId: gigOwnerId,
+                            metadata: {
+                                path: ['gigId'],
+                                equals: gigId
+                            },
+                            title: {
+                                contains: 'New Gig Application'
+                            },
+                            createdAt: {
+                                gte: fifteenSecondsAgo
+                            }
+                        }
+                    });
+
+                    if (!existingNotification) {
+                        console.log('🚨 [Notification Service] Creating backup brand notification - primary notification may have failed');
+
+                        // Fetch applicant name if not provided
+                        let finalApplicantName = applicantName;
+                        if (!finalApplicantName && applicantId) {
+                            try {
+                                const axios = require('axios');
+                                const response = await axios.get(`${process.env.GIG_SERVICE_URL}/internal/users/${applicantId}`, {
+                                    timeout: 3000,
+                                    headers: { 'x-internal': 'true' }
+                                });
+                                if (response.data?.data) {
+                                    const userData = response.data.data;
+                                    finalApplicantName = userData.firstName && userData.lastName ?
+                                        `${userData.firstName} ${userData.lastName}` :
+                                        userData.username || 'A user';
+                                }
+                            } catch (error) {
+                                console.warn('⚠️ [Notification Service] Could not fetch applicant data for backup notification:', error.message);
+                                finalApplicantName = 'A user';
+                            }
+                        }
+
+                        // Create backup brand notification
+                        await this.createAndSendNotification({
+                            userId: gigOwnerId,
+                            type: 'GIG',
+                            category: 'GIG',
+                            title: '📋 New Gig Application!',
+                            message: `${finalApplicantName || 'A user'} has applied for your gig "${gigTitle}". Review their application now.`,
+                            metadata: { gigId, applicantId, eventType: 'application.received.backup' }
+                        });
+
+                        console.log('✅ [Notification Service] Backup brand notification created successfully');
+                        logger.notification('Backup brand notification sent', { gigId, gigOwnerId, applicantId });
+                    } else {
+                        console.log('ℹ️ [Notification Service] Brand notification already exists, skipping backup creation');
+                    }
+                } catch (backupError) {
+                    console.error('❌ [Notification Service] Error creating backup brand notification:', backupError);
+                    logger.error('Error creating backup brand notification:', backupError);
+                }
+            } else {
+                console.log('⚠️ [Notification Service] No gigOwnerId provided, cannot create backup brand notification');
+            }
+
             console.log('✅ [Notification Service] Application confirmed notification processed successfully');
             logger.notification('Application confirmed notification sent', { gigId, applicantId });
         } catch (error) {
@@ -1011,16 +1168,35 @@ class NotificationConsumer {
 
     async handleNewApplicationReceived(eventData) {
         try {
-            console.log('📨 [Notification Service] Handling new_application_received event:', eventData);
+            const { gigId, applicantId, gigOwnerId, gigTitle, applicantName } = eventData;
 
-            // This event is now deprecated - the handleGigApplied event already handles 
-            // notifying the gig owner about new applications to avoid duplicates.
-            // We keep this handler for backward compatibility but don't create notifications.
+            // Notify gig owner about new application
+            await this.createAndSendNotification({
+                userId: gigOwnerId,
+                type: 'GIG',
+                category: 'GIG',
+                title: '📋 New Gig Application!',
+                message: `${applicantName} has applied for your gig "${gigTitle}". Review their application now.`,
+                metadata: { gigId, applicantId }
+            });
 
-            console.log('✅ [Notification Service] New application received event logged (handled by handleGigApplied to avoid duplicates)');
+            // Send email to gig owner
+            if (eventData.ownerEmail) {
+                await this.emailService.sendEmail({
+                    to: eventData.ownerEmail,
+                    templateName: 'gig-applied',
+                    templateData: {
+                        ownerName: eventData.ownerName || 'Brand',
+                        gigTitle: gigTitle,
+                        applicantName: applicantName,
+                        applicationDate: new Date().toLocaleDateString()
+                    }
+                });
+            }
+
+            logger.notification('Gig application notification sent to owner', { gigId, applicantId, gigOwnerId });
         } catch (error) {
-            console.error('❌ [Notification Service] Error handling new application received notification:', error);
-            logger.error('Error handling new application received notification:', error);
+            logger.error('Error handling gig applied notification:', error);
         }
     }
 
@@ -1043,20 +1219,41 @@ class NotificationConsumer {
         try {
             console.log('📨 [Notification Service] Handling application_withdrawn_notification event:', eventData);
 
-            const { gigId, gigTitle, gigOwnerId, applicantName } = eventData;
+            const { gigId, gigTitle, recipientId, applicantId, applicantName } = eventData;
+
+            // Get final applicant name
+            let finalApplicantName = applicantName;
+            if (!finalApplicantName && applicantId) {
+                try {
+                    const axios = require('axios');
+                    const response = await axios.get(`${process.env.GIG_SERVICE_URL}/internal/users/${applicantId}`, {
+                        timeout: 3000,
+                        headers: { 'x-internal': 'true' }
+                    });
+                    if (response.data?.data) {
+                        const userData = response.data.data;
+                        finalApplicantName = userData.firstName && userData.lastName ?
+                            `${userData.firstName} ${userData.lastName}` :
+                            userData.username || 'An applicant';
+                    }
+                } catch (error) {
+                    console.warn('⚠️ [Notification Service] Could not fetch applicant data:', error.message);
+                    finalApplicantName = 'An applicant';
+                }
+            }
 
             // Notify brand about application withdrawal
             await this.createAndSendNotification({
-                userId: gigOwnerId,
+                userId: recipientId,
                 type: 'ENGAGEMENT',
                 category: 'GIG',
                 title: '👋 Application Withdrawn',
-                message: `${applicantName} has withdrawn their application for "${gigTitle}".`,
+                message: `${finalApplicantName || 'An applicant'} has withdrawn their application for "${gigTitle}".`,
                 metadata: { gigId, eventType: 'application.withdrawn' }
             });
 
             console.log('✅ [Notification Service] Application withdrawn notification processed successfully');
-            logger.notification('Application withdrawn notification sent', { gigId, gigOwnerId });
+            logger.notification('Application withdrawn notification sent', { gigId, recipientId });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling application withdrawn notification:', error);
             logger.error('Error handling application withdrawn notification:', error);
@@ -1067,20 +1264,20 @@ class NotificationConsumer {
         try {
             console.log('🎉 [Notification Service] Handling application_approved_notification event:', eventData);
 
-            const { gigId, gigTitle, applicantId } = eventData;
+            const { gigId, gigTitle, recipientId, applicationId } = eventData;
 
             // Notify applicant that their application was approved
             await this.createAndSendNotification({
-                userId: applicantId,
+                userId: recipientId,
                 type: 'ENGAGEMENT',
                 category: 'GIG',
                 title: '🎉 Application Approved!',
                 message: `Great news! Your application for "${gigTitle}" has been approved. You can now start working on it!`,
-                metadata: { gigId, eventType: 'application.approved' }
+                metadata: { gigId, applicationId, eventType: 'application.approved' }
             });
 
             console.log('✅ [Notification Service] Application approved notification processed successfully');
-            logger.notification('Application approved notification sent', { gigId, applicantId });
+            logger.notification('Application approved notification sent', { gigId, recipientId, applicationId });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling application approved notification:', error);
             logger.error('Error handling application approved notification:', error);

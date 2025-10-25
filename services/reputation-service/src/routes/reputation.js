@@ -458,8 +458,8 @@ router.get('/badges/available', async (req, res) => {
             {
                 id: 'RELIABLE_PARTNER',
                 name: 'Reliable Partner',
-                description: '90%+ application success rate',
-                requirement: 'applicationSuccess >= 0.9',
+                description: '90%+ gig completion rate',
+                requirement: 'completedGigs >= 10 && (completedGigs / totalGigs) >= 0.9',
                 icon: '🤝',
                 rarity: 'RARE'
             },

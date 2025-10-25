@@ -148,11 +148,14 @@ class EventProcessor {
             await this.prisma.activityLog.create({
                 data: {
                     userId: eventData.userId || eventData.creatorId || eventData.fromUserId || eventData.ratedUserId || eventData.applicantId,
-                    activityType: eventType,
-                    eventType: eventType,
-                    eventSource: eventData.service || 'gig-service', // Add missing eventSource field
-                    activityData: eventData,
-                    timestamp: new Date()
+                    action: eventType,
+                    impact: this.calculateImpact(eventType),
+                    pointsAwarded: this.calculatePointsAwarded(eventType),
+                    metadata: {
+                        eventType: eventType,
+                        eventSource: eventData.service || 'gig-service',
+                        originalData: eventData
+                    }
                 }
             });
         } catch (error) {
@@ -160,12 +163,43 @@ class EventProcessor {
         }
     }
 
+    calculateImpact(eventType) {
+        const impactMap = {
+            'gig_completed': 'HIGH',
+            'gig_posted': 'MEDIUM',
+            'gig_rated': 'MEDIUM',
+            'boost_received': 'LOW',
+            'boost_given': 'LOW',
+            'application_submitted': 'LOW',
+            'application_accepted': 'MEDIUM',
+            'application_rejected': 'LOW',
+            'profile_updated': 'LOW'
+        };
+        return impactMap[eventType] || 'LOW';
+    }
+
+    calculatePointsAwarded(eventType) {
+        const pointsMap = {
+            'gig_completed': 10,
+            'gig_posted': 2,
+            'gig_rated': 5,
+            'boost_received': 5,
+            'boost_given': 1,
+            'application_submitted': 0,
+            'application_accepted': 5,
+            'application_rejected': 0,
+            'profile_updated': 1
+        };
+        return pointsMap[eventType] || 0;
+    }
+
     async handleGigCompleted(eventData) {
         const { gigId, creatorId, clientId, rating } = eventData;
 
         // Update creator's gig completion count
         await this.updateUserMetrics(creatorId, {
-            gigsCompleted: { increment: 1 }
+            completedGigs: { increment: 1 },
+            totalGigs: { increment: 1 }
         });
 
         // Update average rating if provided
@@ -185,9 +219,9 @@ class EventProcessor {
     async handleGigPosted(eventData) {
         const { gigId, clientId } = eventData;
 
-        // Update client's gig posting count
+        // Update client's gig posting count (use totalGigs as a proxy)
         await this.updateUserMetrics(clientId, {
-            gigsPosted: { increment: 1 }
+            totalGigs: { increment: 1 }
         });
 
         // Recalculate reputation
@@ -227,12 +261,7 @@ class EventProcessor {
     async handleBoostReceived(eventData) {
         const { toUserId, amount } = eventData;
 
-        // Update boost received count
-        await this.updateUserMetrics(toUserId, {
-            boostsReceived: { increment: 1 }
-        });
-
-        // Recalculate reputation
+        // Just recalculate reputation - no specific boost tracking fields in schema
         await this.scoringEngine.updateUserReputation(toUserId, {
             reason: 'boost_received',
             amount
@@ -242,12 +271,7 @@ class EventProcessor {
     async handleBoostGiven(eventData) {
         const { fromUserId, amount } = eventData;
 
-        // Update boost given count
-        await this.updateUserMetrics(fromUserId, {
-            boostsGiven: { increment: 1 }
-        });
-
-        // Recalculate reputation
+        // Just recalculate reputation - no specific boost tracking fields in schema
         await this.scoringEngine.updateUserReputation(fromUserId, {
             reason: 'boost_given',
             amount
@@ -257,12 +281,7 @@ class EventProcessor {
     async handleProfileViewed(eventData) {
         const { profileUserId } = eventData;
 
-        // Update profile view count
-        await this.updateUserMetrics(profileUserId, {
-            profileViews: { increment: 1 }
-        });
-
-        // Recalculate reputation (small increment)
+        // Just recalculate reputation - no specific profile view tracking in schema
         await this.scoringEngine.updateUserReputation(profileUserId, {
             reason: 'profile_viewed'
         });
@@ -271,16 +290,7 @@ class EventProcessor {
     async handleConnectionMade(eventData) {
         const { userId, connectedUserId } = eventData;
 
-        // Update connection count for both users
-        await this.updateUserMetrics(userId, {
-            connectionsMade: { increment: 1 }
-        });
-
-        await this.updateUserMetrics(connectedUserId, {
-            connectionsMade: { increment: 1 }
-        });
-
-        // Recalculate reputation for both
+        // Just recalculate reputation for both - no connection tracking fields in schema
         await this.scoringEngine.updateUserReputation(userId, {
             reason: 'connection_made',
             connectedUserId
@@ -295,12 +305,7 @@ class EventProcessor {
     async handleUserVerified(eventData) {
         const { userId } = eventData;
 
-        // Update verification status
-        await this.updateUserMetrics(userId, {
-            isVerified: true
-        });
-
-        // Recalculate reputation (significant bonus)
+        // Just recalculate reputation - no verification status field in schema
         await this.scoringEngine.updateUserReputation(userId, {
             reason: 'user_verified'
         });
@@ -308,11 +313,6 @@ class EventProcessor {
 
     async handleClanContribution(eventData) {
         const { userId, clanId, contributionType } = eventData;
-
-        // Update clan contribution count
-        await this.updateUserMetrics(userId, {
-            clanContributions: { increment: 1 }
-        });
 
         // Update clan reputation
         await this.updateClanReputation(clanId, userId);
@@ -327,21 +327,38 @@ class EventProcessor {
 
     async updateUserMetrics(userId, updates) {
         try {
-            await this.prisma.reputationScore.upsert({
-                where: { userId },
-                update: updates,
-                create: {
-                    userId,
-                    ...Object.entries(updates).reduce((acc, [key, value]) => {
-                        if (value.increment) {
-                            acc[key] = value.increment;
-                        } else {
-                            acc[key] = value;
-                        }
-                        return acc;
-                    }, {})
-                }
-            });
+            // Filter updates to only include valid schema fields
+            const validFields = [
+                'totalScore', 'reliabilityScore', 'qualityScore', 'communicationScore', 
+                'timelinessScore', 'overallRating', 'totalGigs', 'completedGigs', 
+                'cancelledGigs', 'avgDeliveryTime', 'onTimeDeliveryRate', 
+                'clientSatisfactionRate', 'responseTime', 'level', 'rank', 'badges'
+            ];
+
+            const filteredUpdates = Object.fromEntries(
+                Object.entries(updates).filter(([key]) => validFields.includes(key))
+            );
+
+            if (Object.keys(filteredUpdates).length > 0) {
+                await this.prisma.reputationScore.upsert({
+                    where: { userId },
+                    update: {
+                        ...filteredUpdates,
+                        lastUpdated: new Date()
+                    },
+                    create: {
+                        userId,
+                        ...Object.entries(filteredUpdates).reduce((acc, [key, value]) => {
+                            if (value && typeof value === 'object' && value.increment) {
+                                acc[key] = value.increment;
+                            } else {
+                                acc[key] = value;
+                            }
+                            return acc;
+                        }, {})
+                    }
+                });
+            }
         } catch (error) {
             console.error(`❌ [Reputation] Failed to update metrics for ${userId}:`, error);
         }
@@ -354,19 +371,17 @@ class EventProcessor {
             });
 
             if (reputation) {
-                const currentAvg = reputation.averageRating || 0;
-                const currentCount = reputation.ratingCount || 0;
-                const currentTotal = reputation.totalRating || 0;
+                // Use overallRating field which exists in the schema
+                const currentAvg = reputation.overallRating || 0;
+                const currentCount = reputation.totalGigs || 0;
                 const newCount = currentCount + 1;
-                const newTotal = currentTotal + newRating;
-                const newAverage = newTotal / newCount;
+                const newAverage = ((currentAvg * currentCount) + newRating) / newCount;
 
                 await this.prisma.reputationScore.update({
                     where: { userId },
                     data: {
-                        averageRating: newAverage,
-                        ratingCount: newCount,
-                        totalRating: newTotal
+                        overallRating: newAverage,
+                        totalGigs: newCount
                     }
                 });
             }
@@ -382,14 +397,16 @@ class EventProcessor {
             });
 
             if (reputation) {
-                const currentSuccess = reputation.applicationSuccess || 50; // Start at 50%
-                const adjustment = isAccepted ? 5 : -2; // +5% for success, -2% for rejection
-                const newSuccess = Math.max(0, Math.min(100, currentSuccess + adjustment));
+                // Update reliability score based on application acceptance
+                const currentReliability = reputation.reliabilityScore || 0;
+                const adjustment = isAccepted ? 5 : -2; // +5 for success, -2 for rejection
+                const newReliability = Math.max(0, currentReliability + adjustment);
 
                 await this.prisma.reputationScore.update({
                     where: { userId },
                     data: {
-                        applicationSuccess: newSuccess
+                        reliabilityScore: newReliability,
+                        lastUpdated: new Date()
                     }
                 });
             }

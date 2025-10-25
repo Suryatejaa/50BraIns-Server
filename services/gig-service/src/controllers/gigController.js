@@ -1251,18 +1251,27 @@ class GigController {
             const applicantName = applicantData && applicantData.firstName && applicantData.lastName ? `${applicantData.firstName} ${applicantData.lastName}` : applicantData.username;
 
             // Publish events
-            await this.publishEvent('application_submitted', {
+            console.log('🚀 [Gig Service] Publishing new_application_received event:', {
+                gigId: id,
+                gigOwnerId: gig.postedById,
+                applicantId: applicantId,
+                applicantName: applicantName
+            });
+            await this.publishEvent('new_application_received', {
                 gigId: id,
                 gigTitle: gig.title,
-                applicationId: application.id,
+                gigOwnerId: gig.postedById,
                 applicantId: applicantId,
                 applicantName: applicantName,
                 applicantType: value.applicantType,
-                gigOwnerId: gig.postedById,
-                quotedPrice: value.quotedPrice,
-                clanId: value.applicantType === 'clan' ? applicantId : undefined
+
             });
 
+            console.log('🚀 [Gig Service] Publishing application_confirmed event:', {
+                gigId: id,
+                applicantId: applicantId,
+                gigOwnerId: gig.postedById
+            });
             // Send notification to applicant confirming application
             await this.publishEvent('application_confirmed', {
                 applicantId: applicantId,
@@ -1270,6 +1279,7 @@ class GigController {
                 gigId: id,
                 gigTitle: gig.title,
                 applicationId: application.id,
+                gigOwnerId: gig.postedById, // Add gigOwnerId for backup notification system
                 message: `Your application for "${gig.title}" has been submitted successfully`
             });
 
@@ -3305,32 +3315,44 @@ class GigController {
     // Helper method to publish events with proper routing
     publishEvent = async (eventType, eventData) => {
         try {
-            if (rabbitmqService.isConnected) {
-                const baseEvent = {
-                    ...eventData,
-                    eventType: eventType, // Include the specific event type
-                    timestamp: new Date().toISOString(),
-                    eventId: `gig_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    service: 'gig-service'
-                };
-
-                // Handle work history specific events
-                await this.handleWorkHistoryEvents(eventType, eventData, baseEvent);
-
-                // Publish with the specific routing key for work history events
-                if (eventType.startsWith('gig.')) {
-                    // Work history events (gig.completed, gig.delivered, gig.rated)
-                    await rabbitmqService.publishGigEvent(eventType, baseEvent);
-                } else {
-                    // Regular gig events (for notification service, etc.)
-                    await rabbitmqService.publishGigEvent(eventType, baseEvent);
-                }
-
-                // Also publish to main gig event stream for other services for backward compatibility
-                await rabbitmqService.publishGigEvent('gig.event', baseEvent);
+            if (!rabbitmqService.isConnected) {
+                console.error(`❌ [Gig Service] RabbitMQ not connected, cannot publish ${eventType} event`);
+                throw new Error('RabbitMQ not connected');
             }
+
+            const baseEvent = {
+                ...eventData,
+                eventType: eventType, // Include the specific event type
+                timestamp: new Date().toISOString(),
+                eventId: `gig_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                service: 'gig-service'
+            };
+
+            console.log(`📤 [Gig Service] Publishing ${eventType} event:`, {
+                eventId: baseEvent.eventId,
+                recipientId: eventData.recipientId,
+                gigId: eventData.gigId
+            });
+
+            // Handle work history specific events
+            await this.handleWorkHistoryEvents(eventType, eventData, baseEvent);
+
+            // Publish with the specific routing key for work history events
+            if (eventType.startsWith('gig.')) {
+                // Work history events (gig.completed, gig.delivered, gig.rated)
+                await rabbitmqService.publishGigEvent(eventType, baseEvent);
+            } else {
+                // Regular gig events (for notification service, etc.)
+                await rabbitmqService.publishGigEvent(eventType, baseEvent);
+            }
+
+            // Also publish to main gig event stream for other services for backward compatibility
+            await rabbitmqService.publishGigEvent('gig.event', baseEvent);
+
+            console.log(`✅ [Gig Service] Successfully published ${eventType} event with ID: ${baseEvent.eventId}`);
         } catch (error) {
             console.error(`❌ [Gig Service] Failed to publish ${eventType} event:`, error);
+            throw error; // Re-throw the error so callers can handle it
         }
     };
 
@@ -3714,6 +3736,8 @@ class GigController {
                 applicationId: id,
                 message: `Congratulations! Your application for "${application.gig.title}" has been approved`
             });
+
+            console.log('✅ [Gig Service] Application approved notification sent for application:', id);
 
             // If approved application is from a clan, notify all clan members
             if (application.applicantType === 'clan') {
@@ -4310,37 +4334,58 @@ class GigController {
             // Each application and submission has its own independent lifecycle
 
             // Publish events
-            await this.publishEvent('work_submitted', {
-                gigId: id,
-                gigTitle: gig.title,
-                submissionId: submission.id,
-                submittedById: req.user.id,
-                gigOwnerId: gig.postedById,
-                submissionTitle: value.title
-            });
+            // Publish events with comprehensive error handling
+            try {
+                console.log('🚀 [Gig Service] Publishing work_submitted event...');
+                await this.publishEvent('work_submitted', {
+                    recipientId: gig.postedById,
+                    recipientType: 'brand',
+                    gigId: id,
+                    gigTitle: gig.title,
+                    submissionId: submission.id,
+                    submittedById: req.user.id,
+                    gigOwnerId: gig.postedById,
+                    submissionTitle: value.title
+                });
+                console.log('✅ [Gig Service] work_submitted event published successfully');
+            } catch (error) {
+                console.error('❌ [Gig Service] Failed to publish work_submitted event:', error);
+            }
 
-            // Send notification to brand about work submission
-            await this.publishEvent('work_submitted_notification', {
-                recipientId: gig.postedById,
-                recipientType: 'brand',
-                gigId: id,
-                gigTitle: gig.title,
-                submissionId: submission.id,
-                submittedById: req.user.id,
-                submissionTitle: value.title,
-                message: `Work has been submitted for "${gig.title}" - "${value.title}"`
-            });
+            try {
+                console.log('🚀 [Gig Service] Publishing work_submitted_notification event to brand...');
+                await this.publishEvent('work_submitted_notification', {
+                    recipientId: gig.postedById,
+                    recipientType: 'brand',
+                    gigId: id,
+                    gigTitle: gig.title,
+                    gigOwnerId: gig.postedById,
+                    submissionId: submission.id,
+                    submittedById: req.user.id,
+                    submissionTitle: value.title,
+                    message: `Work has been submitted for "${gig.title}" - "${value.title}"`
+                });
+                console.log('✅ [Gig Service] work_submitted_notification event published successfully to brand:', gig.postedById);
+            } catch (error) {
+                console.error('❌ [Gig Service] Failed to publish work_submitted_notification event:', error);
+                // This is critical - we should still try to send directly if RabbitMQ fails
+            }
 
-            // Send confirmation to applicant
-            await this.publishEvent('work_submission_confirmed', {
-                recipientId: req.user.id,
-                recipientType: 'applicant',
-                gigId: id,
-                gigTitle: gig.title,
-                submissionId: submission.id,
-                submissionTitle: value.title,
-                message: `Your work "${value.title}" has been submitted for "${gig.title}"`
-            });
+            try {
+                console.log('🚀 [Gig Service] Publishing work_submission_confirmed event to applicant...');
+                await this.publishEvent('work_submission_confirmed', {
+                    recipientId: req.user.id,
+                    recipientType: 'applicant',
+                    gigId: id,
+                    gigTitle: gig.title,
+                    submissionId: submission.id,
+                    submissionTitle: value.title,
+                    message: `Your work "${value.title}" has been submitted for "${gig.title}"`
+                });
+                console.log('✅ [Gig Service] work_submission_confirmed event published successfully to applicant:', req.user.id);
+            } catch (error) {
+                console.error('❌ [Gig Service] Failed to publish work_submission_confirmed event:', error);
+            }
 
             res.status(201).json({
                 success: true,
