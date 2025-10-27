@@ -2,24 +2,39 @@ const express = require('express');
 const router = express.Router();
 const gigController = require('../controllers/gigController');
 const { requireAuth, asyncHandler } = require('../middleware'); // Add requireAuth import
+const workHistoryController = require('../controllers/workHistoryController');
+const campaignHistoryController = require('../controllers/campaignHistoryController');
+const gig_controller = require('../controllers/gig.controller');
+const applicationController = require('../controllers/application.controller');
 
+{/***********************************************
+****************gig_controller Routes****************
+************************************************/}
 // POST /gigs - Create a new gig (authenticated)
-router.post('/', requireAuth, asyncHandler(gigController.createGig));
+router.post('/', requireAuth, asyncHandler(gig_controller.createGig));
 
 // POST /gigs/:gigId/change-status - Change gig status (authenticated)
-router.post('/:gigId/change-status', requireAuth, asyncHandler(gigController.changeGigStatus));
+router.post('/:gigId/change-status', requireAuth, asyncHandler(gig_controller.changeGigStatus));
 
 // POST /gigs/draft - Save gig as draft (authenticated)
-router.post('/draft', requireAuth, asyncHandler(gigController.saveDraft));
+router.post('/draft', requireAuth, asyncHandler(gig_controller.saveDraft));
+
+// GET /gigs - List all gigs with advanced sorting and filtering (public)
+router.get('/', asyncHandler(gig_controller.getGigs));
+
+// GET /gigs/feed - Enhanced gigs feed (alias for main route)
+router.get('/feed', asyncHandler(gig_controller.getGigs));
+
 
 // GET /gigs/my-drafts - Get user's draft gigs (authenticated)
-router.get('/my-drafts', requireAuth, asyncHandler(gigController.getMyDrafts));
+router.get('/my-drafts', requireAuth, asyncHandler(gig_controller.getMyDrafts));
 
 // GET /gigs/my-posted - Get user's posted gigs (authenticated)
 router.get('/my-posted', requireAuth, asyncHandler(gigController.getMyPostedGigs));
 
-// GET /gigs/my-applications - Get user's applications (authenticated)
-router.get('/my-applications', requireAuth, asyncHandler(gigController.getMyApplications));
+{/***************************************************************
+****************gig Routes****************
+************************************************/   }
 
 // POST /gigs/draft/:id/publish - Publish a draft gig (authenticated)
 router.post('/draft/:id/publish', requireAuth, asyncHandler(gigController.publishDraft));
@@ -51,15 +66,6 @@ router.get('/public/categories', asyncHandler(gigController.getCategories));
 // GET /gigs/public/skills - Get popular skills (public)
 router.get('/public/skills', asyncHandler(gigController.getPopularSkills));
 
-// GET /gigs - List all gigs with advanced sorting and filtering (public)
-router.get('/', asyncHandler(gigController.getGigs));
-
-// GET /gigs/feed - Enhanced gigs feed (alias for main route)
-router.get('/feed', asyncHandler(gigController.getGigs));
-
-// GET /gigs/:id - Get detailed gig view (public)
-router.get('/:id', asyncHandler(gigController.getGigById));
-
 // PUT /gigs/:id - Update a gig (authenticated, gig owner only)
 router.put('/:id', requireAuth, asyncHandler(gigController.updateGig));
 
@@ -78,17 +84,58 @@ router.post('/:id/boost', requireAuth, asyncHandler(gigController.boostGig));
 // GET /gigs/:id/boosts - Get gig boosts (authenticated, gig owner only)
 router.get('/:id/boosts', requireAuth, asyncHandler(gigController.getGigBoosts));
 
+
+
+{/***************************************************************
+****************applicationController Routes****************
+************************************************/   }
+
 // POST /gigs/:id/apply - Apply to a gig (authenticated) - THIS IS THE KEY FIX
-router.post('/:id/apply', requireAuth, asyncHandler(gigController.applyToGig));
+router.post('/:id/apply', requireAuth, asyncHandler(applicationController.applyToGig));
 
 // POST /gigs/:id/assign - Send gig invitation (authenticated, gig owner only)
-router.post('/:id/assign', requireAuth, asyncHandler(gigController.assignGig));
+router.post('/:id/assign', requireAuth, asyncHandler(applicationController.assignGig));
+
+// POST /gigs/:id/submit - Submit work for a gig (assigned applicant only)
+router.post('/:id/submit', requireAuth, asyncHandler(applicationController.submitWork));
+
+// POST /gigs/submissions/:id/review - Review a submission (gig owner only)
+router.post('/submissions/:id/review', requireAuth, asyncHandler(applicationController.reviewSubmission));
+
+// DELETE /gigs/applications/:id - Withdraw an application (applicant only)
+router.delete('/applications/:id', requireAuth, asyncHandler(applicationController.withdrawApplication));
+
+// POST /gigs/applications/:id/accept - Accept a specific application (gig owner only)
+router.post('/applications/:id/approve', requireAuth, asyncHandler(applicationController.approveApplication));
+
+// POST /gigs/applications/:id/reject - Reject a specific application (gig owner only)
+router.post('/applications/:id/reject', requireAuth, asyncHandler(applicationController.rejectApplication));
+
+// POST /gigs/applications/:id/accept-invitation - User accepts gig invitation
+router.post('/applications/:id/accept-invitation', requireAuth, asyncHandler(applicationController.acceptInvitation));
+
+// POST /gigs/applications/:id/reject-invitation - User rejects gig invitation
+router.post('/applications/:id/reject-invitation', requireAuth, asyncHandler(applicationController.rejectInvitation));
+
+// GET /gigs/my-applications - Get user's applications (authenticated)
+router.get('/my-applications', requireAuth, asyncHandler(applicationController.getMyApplications));
+
+//GET /gigs/applications/received - Get received applications for gig owner
+router.get('/applications/received', requireAuth, asyncHandler(applicationController.getReceivedApplications));
+
+// PUT /gigs/applications/:id - Update an application (applicant only)
+router.put('/applications/:id', requireAuth, asyncHandler(applicationController.updateApplication));
+
+
+{/***************************************************************
+****************gigController Routes****************
+************************************************/   }
+
+// GET /gigs/:id - Get detailed gig view (public) - MOVED HERE TO FIX ROUTE ORDERING
+router.get('/:id', asyncHandler(gig_controller.getGigById));
 
 // GET /gigs/:id/applications - Get applications for a gig (gig owner only)
 router.get('/:gigId/applications', requireAuth, asyncHandler(gigController.getGigApplications));
-
-// POST /gigs/:id/submit - Submit work for a gig (assigned applicant only)
-router.post('/:id/submit', requireAuth, asyncHandler(gigController.submitWork));
 
 // GET /gigs/:id/submissions - Get submissions for a gig (gig owner only)
 router.get('/:id/submissions', requireAuth, asyncHandler(gigController.getGigSubmissions));
@@ -96,31 +143,9 @@ router.get('/:id/submissions', requireAuth, asyncHandler(gigController.getGigSub
 // PUT /gigs/:id/status - Update gig status (gig owner only)
 router.put('/:id/status', requireAuth, asyncHandler(gigController.updateGigStatus));
 
-// POST /gigs/applications/:id/accept - Accept a specific application (gig owner only)
-router.post('/applications/:id/approve', requireAuth, asyncHandler(gigController.approveApplication));
-
-// POST /gigs/applications/:id/reject - Reject a specific application (gig owner only)
-router.post('/applications/:id/reject', requireAuth, asyncHandler(gigController.rejectApplication));
-
-// POST /gigs/applications/:id/accept-invitation - User accepts gig invitation
-router.post('/applications/:id/accept-invitation', requireAuth, asyncHandler(gigController.acceptInvitation));
-
-// POST /gigs/applications/:id/reject-invitation - User rejects gig invitation
-router.post('/applications/:id/reject-invitation', requireAuth, asyncHandler(gigController.rejectInvitation));
-
-// PUT /gigs/applications/:id - Update an application (applicant only)
-router.put('/applications/:id', requireAuth, asyncHandler(gigController.updateApplication));
-
-// DELETE /gigs/applications/:id - Withdraw an application (applicant only)
-router.delete('/applications/:id', requireAuth, asyncHandler(gigController.withdrawApplication));
-
 // PUT /gigs/submissions/:id - Update a submission (submitter only)
 router.put('/submissions/:id', requireAuth, asyncHandler(gigController.updateSubmission));
 
-// POST /gigs/submissions/:id/review - Review a submission (gig owner only)
-router.post('/submissions/:id/review', requireAuth, asyncHandler(gigController.reviewSubmission));
-
-// Clan gig workflow routes
 // POST /gigs/:gigId/milestones - Create a milestone for a gig
 router.post('/:gigId/milestones', requireAuth, asyncHandler(gigController.createMilestone));
 
@@ -147,5 +172,16 @@ router.get('/:gigId/milestones', requireAuth, asyncHandler(gigController.getGigM
 
 // NEW: Get tasks for a specific gig
 router.get('/:gigId/tasks', requireAuth, asyncHandler(gigController.getGigTasks));
+
+// Work History Routes
+router.get('/work-history/applicant/:applicantId', workHistoryController.getApplicantHistory);
+router.get('/work-history/applicant/:applicantId/earnings', workHistoryController.getApplicantEarnings);
+router.patch('/work-history/application/:applicationId', workHistoryController.updateWorkHistory);
+
+// Campaign History Routes
+router.get('/campaigns/brand/:brandId', campaignHistoryController.getBrandCampaigns);
+router.get('/campaigns/brand/:brandId/analytics', campaignHistoryController.getCampaignAnalytics);
+router.patch('/campaigns/:gigId/metrics', campaignHistoryController.updateCampaignMetrics);
+
 
 module.exports = router;

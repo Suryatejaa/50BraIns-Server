@@ -145,6 +145,11 @@ class RabbitMQService {
         }
     }
 
+    //publishToExchange
+    async publishToExchange(exchange, routingKey, eventData) {
+        return this.publishEvent(routingKey, eventData, exchange);
+    }
+
     // New method for publishing gig events specifically
     async publishGigEvent(routingKey, eventData) {
         return this.publishEvent(routingKey, eventData, this.gigExchange);

@@ -173,11 +173,11 @@ class NotificationConsumer {
 
     async handleGigApplicationRejected(eventData) {
         try {
-            const { gigId, gigTitle, applicationId, applicantId, applicantType, gigOwnerId, reason } = eventData;
+            const { gigId, gigTitle, applicationId,recipientId, applicantId, applicantType, gigOwnerId, reason } = eventData;
 
             // Notify the applicant that their application was rejected
             await this.createAndSendNotification({
-                userId: applicantId,
+                userId: recipientId,
                 type: 'GIG',
                 category: 'GIG',
                 title: '❌ Application Not Selected',
@@ -730,14 +730,25 @@ class NotificationConsumer {
 
     async handleUserLogin(eventData) {
         try {
+            console.log('🔐 [Notification Service] Handling user_login event with data:', JSON.stringify(eventData, null, 2));
+
             const { id: userId, email, username, loginAt, loginMethod } = eventData;
+
+            console.log('🔐 [Notification Service] Extracted data:', { userId, email, username, loginAt, loginMethod });
+
+            if (!userId) {
+                console.error('❌ [Notification Service] No userId found in event data:', eventData);
+                throw new Error('Missing userId in login event data');
+            }
+
+            console.log('🔐 [Notification Service] Handling user_login event for userId:', userId);
 
             await this.createAndSendNotification({
                 userId: userId,
                 type: 'SYSTEM',
                 category: 'USER',
                 title: '🔐 Login Detected',
-                message: `New login detected from ${loginMethod} on ${loginAt}.                
+                message: `New login detected from ${loginMethod || 'unknown method'} on ${loginAt || new Date().toISOString()}.                
                 If this was not you, please reset your password immediately to secure your account.
                 `,
                 metadata: {
@@ -746,10 +757,68 @@ class NotificationConsumer {
                     isLogin: true
                 }
             });
-
+            console.log('✅ [Notification Service] User login notification processed successfully for userId:', userId);
             logger.notification('User login notification sent', { userId });
         } catch (error) {
+            console.error('❌ [Notification Service] Error handling user login notification:', error);
             logger.error('Error handling user login notification:', error);
+        }
+    }
+
+    // await consumer.handleUserReactivated(eventData);
+    // await consumer.handleUserDeleted(eventData);
+    // await consumer.handleUserDeactivated(eventData);
+    async handleUserReactivated(eventData) {
+        try {
+            const { userId } = eventData;
+
+            await this.createAndSendNotification({
+                userId: userId,
+                type: 'SYSTEM',
+                category: 'USER',
+                title: '🎉 Account Reactivated',
+                message: 'Your account has been reactivated. Welcome back!',
+                metadata: { isAccountReactivated: true }
+            });
+
+            logger.notification('User reactivated notification sent', { userId });
+        } catch (error) {
+            logger.error('Error handling user reactivated notification:', error);
+        }
+    }
+
+    async handleUserDeleted(eventData) {
+        try {
+            const { userId } = eventData;
+            await this.createAndSendNotification({
+                userId: userId,
+                type: 'SYSTEM',
+                category: 'USER',
+                title: 'Account Deleted',
+                message: 'Your account has been deleted. We\'re sorry to see you go!',
+                metadata: { isAccountDeleted: true }
+            });
+            logger.notification('User deleted notification sent', { userId });
+        }
+        catch (error) {
+            logger.error('Error handling user deleted notification:', error);
+        }
+    }
+    async handleUserDeactivated(eventData) {
+        try {
+            const { userId } = eventData;
+            await this.createAndSendNotification({
+                userId: userId,
+                type: 'SYSTEM',
+                category: 'USER',
+                title: 'Account Deactivated',
+                message: 'Your account has been deactivated. Contact support to reactivate your account.',
+                metadata: { isAccountDeactivated: true }
+            });
+
+            logger.notification('User deactivated notification sent', { userId });
+        } catch (error) {
+            logger.error('Error handling user deactivated notification:', error);
         }
     }
 
@@ -1019,7 +1088,16 @@ class NotificationConsumer {
         try {
             console.log('⭐ [Notification Service] Handling submission_reviewed event:', eventData);
 
-            const { gigId, submissionId, applicantId, status } = eventData;
+            const { gigId, submissionId, recipientId, applicantId, status } = eventData;
+
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'ENGAGEMENT',
+                category: 'GIG',
+                title: '📋 Submission Reviewed',
+                message: `Your submission for gig "${gigId}" has been reviewed. Status: ${status}`,
+                metadata: { gigId, submissionId, applicantId, status, eventType: 'submission.reviewed' }
+            });
 
             // This is handled in reputation/work history services - just log for now
             console.log('✅ [Notification Service] Submission reviewed event logged for other services');
@@ -1077,8 +1155,9 @@ class NotificationConsumer {
         try {
             console.log('✅ [Notification Service] Handling application_confirmed event:', eventData);
 
-            const { gigId, gigTitle, applicantId, gigOwnerId, applicantName } = eventData;
+            const { gigId, gigTitle, applicantId, gigOwnerId, applicantName, recipientId } = eventData;
 
+            console.log('✅ [Notification Service] Extracted data:', { gigId, gigTitle, applicantId, gigOwnerId, applicantName });
             // Notify applicant that their application was confirmed
             await this.createAndSendNotification({
                 userId: applicantId,
@@ -1168,11 +1247,11 @@ class NotificationConsumer {
 
     async handleNewApplicationReceived(eventData) {
         try {
-            const { gigId, applicantId, gigOwnerId, gigTitle, applicantName } = eventData;
+            const { gigId, applicantId, recipientId, gigOwnerId, gigTitle, applicantName } = eventData;
 
             // Notify gig owner about new application
             await this.createAndSendNotification({
-                userId: gigOwnerId,
+                userId: recipientId,
                 type: 'GIG',
                 category: 'GIG',
                 title: '📋 New Gig Application!',
@@ -1313,6 +1392,14 @@ class NotificationConsumer {
         try {
             console.log('📨 [Notification Service] Handling gig_invitation_sent event:', eventData);
             const { gigId, gigTitle, invitedUserId, invitedByOwnerId, applicationId, quotedPrice, message } = eventData;
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'ENGAGEMENT',
+                category: 'GIG',
+                title: '📨 Gig Invitation Received!',
+                message: message || `You have been invited to work on "${gigTitle}". Please review and respond to the invitation.`,
+                metadata: { gigId, gigTitle, applicationId, invitedByOwnerId, isInvitation: true }
+            });
             logger.notification('Gig invitation sent event processed', { gigId, invitedUserId, invitedByOwnerId });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling gig invitation sent:', error);
@@ -1347,6 +1434,14 @@ class NotificationConsumer {
         try {
             console.log('🎉 [Notification Service] Handling gig_invitation_accepted event:', eventData);
             const { gigId, gigTitle, acceptedByUserId, gigOwnerId, applicationId } = eventData;
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'ENGAGEMENT',
+                category: 'GIG',
+                title: '🎉 Invitation Accepted!',
+                message: message || `Your gig invitation for "${gigTitle}" has been accepted! The work can now begin.`,
+                metadata: { gigId, gigTitle, applicationId, acceptedByUserId, invitationAccepted: true }
+            });
             logger.notification('Gig invitation accepted event processed', { gigId, acceptedByUserId, gigOwnerId });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling gig invitation accepted:', error);
@@ -1381,6 +1476,14 @@ class NotificationConsumer {
         try {
             console.log('❌ [Notification Service] Handling gig_invitation_rejected event:', eventData);
             const { gigId, gigTitle, rejectedByUserId, gigOwnerId, applicationId, reason } = eventData;
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'ENGAGEMENT',
+                category: 'GIG',
+                title: '❌ Invitation Declined',
+                message: message || `Your gig invitation for "${gigTitle}" has been declined.${reason ? ` Reason: ${reason}` : ''}`,
+                metadata: { gigId, gigTitle, applicationId, rejectedByUserId, reason, invitationRejected: true }
+            });
             logger.notification('Gig invitation rejected event processed', { gigId, rejectedByUserId, gigOwnerId, reason });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling gig invitation rejected:', error);
@@ -1455,7 +1558,10 @@ class NotificationConsumer {
                     message: notificationData.message,
                     metadata: notificationData.metadata || {},
                     status: 'SENT',
-                    priority: notificationData.priority || 1
+                    priority: notificationData.priority || 1,
+                    actionUrl: notificationData.actionUrl || null,
+                    relatedId: notificationData.relatedId || null,
+                    relatedType: notificationData.relatedType || null
                 }
             });
 
@@ -1477,7 +1583,7 @@ class NotificationConsumer {
                     title: notification.title,
                     message: notification.message,
                     metadata: notification.metadata,
-                    read: notification.read,
+                    readAt: notification.readAt, // Use readAt instead of read
                     priority: notification.priority,
                     createdAt: notification.createdAt
                 };

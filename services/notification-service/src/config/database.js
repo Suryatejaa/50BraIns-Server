@@ -100,25 +100,22 @@ async function getDatabaseStats() {
         }
 
         const [
-            clansCount,
-            membersCount,
-            invitationsCount,
-            requestsCount,
-            reviewsCount
+            notificationsCount,
+            emailTemplatesCount,
+            preferencesCount,
+            logsCount
         ] = await Promise.all([
-            prisma.clan.count(),
-            prisma.clanMember.count(),
-            prisma.clanInvitation.count(),
-            prisma.clanJoinRequest.count(),
-            prisma.clanReview.count()
+            prisma.notification.count(),
+            prisma.emailTemplate.count(),
+            prisma.notificationPreference.count(),
+            prisma.notificationLog.count()
         ]);
 
         return {
-            clans: clansCount,
-            members: membersCount,
-            invitations: invitationsCount,
-            joinRequests: requestsCount,
-            reviews: reviewsCount,
+            notifications: notificationsCount,
+            emailTemplates: emailTemplatesCount,
+            preferences: preferencesCount,
+            logs: logsCount,
             timestamp: new Date().toISOString()
         };
     } catch (error) {

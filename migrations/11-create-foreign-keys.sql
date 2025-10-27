@@ -60,6 +60,18 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'gigTasks_assignmentId_fkey') THEN
         ALTER TABLE "gigTasks" ADD CONSTRAINT "gigTasks_assignmentId_fkey" FOREIGN KEY ("assignmentId") REFERENCES "gigAssignments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'application_work_history_applicationId_fkey') THEN
+        ALTER TABLE "application_work_history" ADD CONSTRAINT "application_work_history_applicationId_fkey" FOREIGN KEY ("applicationId") REFERENCES "applications"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'application_work_history_gigId_fkey') THEN
+        ALTER TABLE "application_work_history" ADD CONSTRAINT "application_work_history_gigId_fkey" FOREIGN KEY ("gigId") REFERENCES "gigs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaign_history_gigId_fkey') THEN
+        ALTER TABLE "campaign_history" ADD CONSTRAINT "campaign_history_gigId_fkey" FOREIGN KEY ("gigId") REFERENCES "gigs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
 END $$;
 
 -- ============================================================================

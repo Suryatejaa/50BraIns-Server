@@ -25,6 +25,7 @@ class RabbitMQService {
                 { name: '50brains-events', type: 'topic' },
                 { name: 'reputation_events', type: 'topic' },
                 { name: 'credit_events', type: 'topic' },
+                { name: 'auth_events', type: 'topic' },
                 { name: 'notifications', type: 'topic' } // Our own exchange
             ];
 
@@ -64,7 +65,9 @@ class RabbitMQService {
             'notifications.clan.events',
             'notifications.user.events',
             'notifications.reputation.events',
-            'notifications.credit.events'
+            'notifications.credit.events',
+            'notifications.auth.events',
+            'notifications.brains.events'
         ];
 
         for (const queueName of notificationQueues) {
@@ -82,6 +85,13 @@ class RabbitMQService {
     }
 
     async bindToActualEvents() {
+        // Bind to specific Auth Service events (these are the actual routing keys Auth Service publishes)
+        await this.channel.bindQueue('notifications.brains.events', 'brains_events', 'user.reactivated');
+        await this.channel.bindQueue('notifications.brains.events', 'brains_events', 'user.login');
+        await this.channel.bindQueue('notifications.brains.events', 'brains_events', 'user.registered');
+        await this.channel.bindQueue('notifications.brains.events', 'brains_events', 'user.deleted');
+        await this.channel.bindQueue('notifications.brains.events', 'brains_events', 'user.deactivated');
+
         // Bind to specific Gig Service events (these are the actual routing keys Gig Service publishes)
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_created');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_updated');
@@ -146,6 +156,9 @@ class RabbitMQService {
         await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.registered');
         await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.login');
         await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.password_reset');
+        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.reactivated');
+        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deleted');
+        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deactivated');
 
         // Bind to Reputation Service events
         await this.channel.bindQueue('notifications.reputation.events', 'reputation_events', 'gig.completed');
@@ -171,7 +184,8 @@ class RabbitMQService {
             'notifications.clan.events',
             'notifications.gig.events',
             'notifications.credit.events',
-            'notifications.reputation.events'
+            'notifications.reputation.events',
+            'notifications.brains.events'  // Add this queue for auth/user events
         ];
 
         for (const queueName of queues) {
@@ -229,10 +243,15 @@ class RabbitMQService {
             case 'user.login':
                 await consumer.handleUserLogin(eventData);
                 break;
-            case 'user.password_reset':
-                await consumer.handlePasswordReset(eventData);
+            case 'user.reactivated':
+                await consumer.handleUserReactivated(eventData);
                 break;
-
+            case 'user.deleted':
+                await consumer.handleUserDeleted(eventData);
+                break;
+            case 'user.deactivated':
+                await consumer.handleUserDeactivated(eventData);
+                break;
             // Clan Events - direct routing keys
             case 'clan.created':
                 await consumer.handleClanCreated(eventData);

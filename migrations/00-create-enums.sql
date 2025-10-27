@@ -7,7 +7,7 @@
 -- ============================================================================
 
 -- Disable triggers temporarily
-SET session_replication_role = replica;
+SET session_replication_role = 'replica';
 
 -- Drop existing enum types if they exist (safe migration)
 DO $$ 
@@ -20,6 +20,10 @@ BEGIN
     DROP TYPE IF EXISTS "GigAssignmentStatus" CASCADE;
     DROP TYPE IF EXISTS "GigMilestoneStatus" CASCADE;
     DROP TYPE IF EXISTS "GigTaskStatus" CASCADE;
+    DROP TYPE IF EXISTS "WorkHistoryApplicationStatus" CASCADE;
+    DROP TYPE IF EXISTS "WorkHistorySubmissionStatus" CASCADE;
+    DROP TYPE IF EXISTS "WorkHistoryPaymentStatus" CASCADE;
+    DROP TYPE IF EXISTS "CampaignStatus" CASCADE;
     DROP TYPE IF EXISTS "TransactionType" CASCADE;
     DROP TYPE IF EXISTS "TransactionStatus" CASCADE;
     DROP TYPE IF EXISTS "BoostType" CASCADE;
@@ -148,6 +152,64 @@ EXCEPTION
         NULL;
 END $$;
 
+-- Work History Enums for ApplicationWorkHistory
+DO $$ 
+BEGIN
+    CREATE TYPE "WorkHistoryApplicationStatus" AS ENUM (
+        'PENDING',
+        'APPROVED',
+        'SUBMITTED',
+        'CLOSED',
+        'REJECTED',
+        'WITHDRAWN'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN 
+        NULL;
+END $$;
+
+DO $$ 
+BEGIN
+    CREATE TYPE "WorkHistorySubmissionStatus" AS ENUM (
+        'PENDING',
+        'APPROVED',
+        'REJECTED',
+        'REVISION'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN 
+        NULL;
+END $$;
+
+DO $$ 
+BEGIN
+    CREATE TYPE "WorkHistoryPaymentStatus" AS ENUM (
+        'PENDING',
+        'PROCESSING',
+        'PAID',
+        'FAILED'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN 
+        NULL;
+END $$;
+
+-- Campaign History Enums
+DO $$ 
+BEGIN
+    CREATE TYPE "CampaignStatus" AS ENUM (
+        'DRAFT',
+        'PUBLISHED',
+        'ACTIVE',
+        'PAUSED',
+        'COMPLETED',
+        'CANCELLED'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN 
+        NULL;
+END $$;
+
 -- Credit Service Enums
 DO $$ 
 BEGIN
@@ -229,6 +291,6 @@ EXCEPTION
 END $$;
 
 -- Re-enable triggers
-SET session_replication_role = DEFAULT;
+SET session_replication_role = 'origin';
 
 SELECT 'SUCCESS: All enum types created!' as result;

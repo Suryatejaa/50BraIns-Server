@@ -67,10 +67,15 @@ class RabbitMQService {
             const workHistoryQueue = 'work_history_events';
             await this.channel.assertQueue(workHistoryQueue, { durable: true });
 
-            // Bind queues to exchanges with routing keys
+            // Bind queues to exchanges with routing keys for comprehensive work history
             await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.completed');
             await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.rated');
             await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.delivered');
+            await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.application.created');
+            await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.application.accepted');
+            await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.application.rejected');
+            await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.work.submitted');
+            await this.channel.bindQueue(workHistoryQueue, 'gig_events', 'gig.submission.reviewed');
             await this.channel.bindQueue(workHistoryQueue, 'user_events', 'user.portfolio.updated');
 
             // Set prefetch count for fair distribution
@@ -114,6 +119,26 @@ class RabbitMQService {
                     await this.handleGigDelivered(event);
                     break;
 
+                case 'gig.application.created':
+                    await this.handleApplicationCreated(event);
+                    break;
+
+                case 'gig.application.accepted':
+                    await this.handleApplicationAccepted(event);
+                    break;
+
+                case 'gig.application.rejected':
+                    await this.handleApplicationRejected(event);
+                    break;
+
+                case 'gig.work.submitted':
+                    await this.handleWorkSubmitted(event);
+                    break;
+
+                case 'gig.submission.reviewed':
+                    await this.handleSubmissionReviewed(event);
+                    break;
+
                 case 'user.portfolio.updated':
                     await this.handlePortfolioUpdated(event);
                     break;
@@ -143,6 +168,217 @@ class RabbitMQService {
     }
 
     /**
+     * Handle application created event
+     */
+    async handleApplicationCreated(event) {
+        try {
+            const {
+                applicationId,
+                gigId,
+                applicantId,
+                applicantType,
+                proposal,
+                quotedPrice,
+                estimatedTime,
+                createdAt,
+                gigData
+            } = event;
+
+            Logger.info(`Application created: ${applicationId} for gig ${gigId} by ${applicantId}`);
+
+            // Log application event
+            await WorkHistoryService.logWorkEvent(applicantId, null, 'application_submitted', {
+                applicationId,
+                gigId,
+                gigTitle: gigData?.title,
+                applicantType,
+                quotedPrice,
+                estimatedTime,
+                submittedAt: createdAt
+            });
+
+            // Update user analytics (application attempts)
+            await this.updateUserApplicationStats(applicantId, 'submitted');
+
+            Logger.info(`Logged application created for user ${applicantId}`);
+
+        } catch (error) {
+            Logger.error('Error handling application created event:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Handle application accepted event
+     */
+    async handleApplicationAccepted(event) {
+        try {
+            const {
+                applicationId,
+                gigId,
+                applicantId,
+                clientId,
+                acceptedAt,
+                quotedPrice,
+                gigData
+            } = event;
+
+            Logger.info(`Application accepted: ${applicationId} for gig ${gigId}`);
+
+            // Log acceptance event
+            await WorkHistoryService.logWorkEvent(applicantId, null, 'application_accepted', {
+                applicationId,
+                gigId,
+                gigTitle: gigData?.title,
+                clientId,
+                quotedPrice,
+                acceptedAt
+            });
+
+            // Update user analytics (application success)
+            await this.updateUserApplicationStats(applicantId, 'accepted');
+
+            Logger.info(`Logged application acceptance for user ${applicantId}`);
+
+        } catch (error) {
+            Logger.error('Error handling application accepted event:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Handle application rejected event
+     */
+    async handleApplicationRejected(event) {
+        try {
+            const {
+                applicationId,
+                gigId,
+                applicantId,
+                clientId,
+                rejectedAt,
+                reason,
+                gigData
+            } = event;
+
+            Logger.info(`Application rejected: ${applicationId} for gig ${gigId}`);
+
+            // Log rejection event
+            await WorkHistoryService.logWorkEvent(applicantId, null, 'application_rejected', {
+                applicationId,
+                gigId,
+                gigTitle: gigData?.title,
+                clientId,
+                reason,
+                rejectedAt
+            });
+
+            // Update user analytics (application rejection)
+            await this.updateUserApplicationStats(applicantId, 'rejected');
+
+            Logger.info(`Logged application rejection for user ${applicantId}`);
+
+        } catch (error) {
+            Logger.error('Error handling application rejected event:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Handle work submitted event
+     */
+    async handleWorkSubmitted(event) {
+        try {
+            const {
+                submissionId,
+                gigId,
+                applicantId,
+                submissionTitle,
+                submissionDescription,
+                submittedFiles,
+                submittedAt,
+                gigData
+            } = event;
+
+            Logger.info(`Work submitted: ${submissionId} for gig ${gigId} by ${applicantId}`);
+
+            // Log work submission event
+            await WorkHistoryService.logWorkEvent(applicantId, null, 'work_submitted', {
+                submissionId,
+                gigId,
+                gigTitle: gigData?.title,
+                submissionTitle,
+                submissionDescription,
+                filesCount: submittedFiles?.length || 0,
+                submittedAt
+            });
+
+            Logger.info(`Logged work submission for user ${applicantId}`);
+
+        } catch (error) {
+            Logger.error('Error handling work submitted event:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Handle submission reviewed event
+     */
+    async handleSubmissionReviewed(event) {
+        try {
+            const {
+                submissionId,
+                gigId,
+                applicantId,
+                clientId,
+                reviewStatus,
+                feedback,
+                rating,
+                reviewedAt,
+                gigCompleted,
+                gigData
+            } = event;
+
+            Logger.info(`Submission reviewed: ${submissionId} with status ${reviewStatus}`);
+
+            // Log review event
+            await WorkHistoryService.logWorkEvent(applicantId, null, 'submission_reviewed', {
+                submissionId,
+                gigId,
+                gigTitle: gigData?.title,
+                clientId,
+                reviewStatus,
+                feedback,
+                rating,
+                reviewedAt,
+                gigCompleted
+            });
+
+            // If submission was approved and gig completed, this will trigger gig.completed event
+            // which will create the final work record
+
+            Logger.info(`Logged submission review for user ${applicantId}`);
+
+        } catch (error) {
+            Logger.error('Error handling submission reviewed event:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update user application statistics
+     */
+    async updateUserApplicationStats(userId, status) {
+        try {
+            // This could be implemented to track application success rates
+            // For now, we'll just log it as the reputation service handles scoring
+            Logger.info(`Updated application stats for user ${userId}: ${status}`);
+        } catch (error) {
+            Logger.error('Error updating application stats:', error);
+        }
+    }
+
+    /**
      * Handle gig completion event
      */
     async handleGigCompleted(event) {
@@ -151,37 +387,62 @@ class RabbitMQService {
 
             const {
                 gigId,
+                creatorId,
                 userId,
                 clientId,
-                gigData,
-                completionData,
-                deliveryData
+                submissionId,
+                rating,
+                completedAt,
+                gigTitle,
+                gigData
             } = event;
+
+            // Use creatorId if available, fallback to userId
+            const workerId = creatorId || userId;
+
+            if (!workerId || !clientId || !gigId) {
+                Logger.error('Missing required fields for gig completion', { workerId, clientId, gigId });
+                return;
+            }
+
+            // Try to get more gig details if gigData not provided
+            let gigDetails = gigData;
+            if (!gigDetails) {
+                // If we don't have gig details, create minimal data
+                gigDetails = {
+                    title: gigTitle || 'Completed Gig',
+                    description: 'Work completed via gig platform',
+                    category: 'GENERAL',
+                    skills: []
+                };
+            }
 
             // Extract work record data from event
             const workData = {
-                userId,
+                userId: workerId,
                 gigId,
                 clientId,
-                title: gigData.title,
-                description: gigData.description,
-                category: gigData.category,
-                skills: gigData.skills || [],
-                completedAt: new Date(completionData.completedAt),
-                deliveryTime: deliveryData.deliveryTime || 0,
-                budgetRange: gigData.budgetRange || '0-100',
-                actualBudget: completionData.actualAmount,
-                clientRating: completionData.rating,
-                clientFeedback: completionData.feedback,
-                onTimeDelivery: deliveryData.onTime || false,
-                withinBudget: completionData.withinBudget || true,
-                portfolioItems: deliveryData.portfolioItems || []
+                title: gigDetails.title || gigTitle || 'Completed Gig',
+                description: gigDetails.description || 'Work completed via gig platform',
+                category: gigDetails.category || 'GENERAL',
+                skills: gigDetails.skills || [],
+                completedAt: new Date(completedAt || new Date()),
+                deliveryTime: event.deliveryTime || 0,
+                budgetRange: gigDetails.budgetRange || '0-1000',
+                actualBudget: event.actualBudget || gigDetails.budgetMax || 1000,
+                clientRating: rating || 0,
+                clientFeedback: event.feedback || '',
+                onTimeDelivery: event.onTimeDelivery !== false, // Default to true unless explicitly false
+                withinBudget: event.withinBudget !== false, // Default to true unless explicitly false
+                portfolioItems: event.portfolioItems || []
             };
+
+            Logger.info(`Processing gig completion for user ${workerId}, gig ${gigId}`);
 
             // Record the completed work
             await WorkHistoryService.recordCompletedWork(workData);
 
-            Logger.info(`Recorded completed work for gig ${gigId}, user ${userId}`);
+            Logger.info(`Successfully recorded completed work for gig ${gigId}, user ${workerId}`);
 
         } catch (error) {
             Logger.error('Error handling gig completed event:', error);

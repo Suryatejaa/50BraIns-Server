@@ -17,6 +17,7 @@ class EventProcessor {
             this.channel = await this.connection.createChannel();
 
             await this.channel.assertExchange('reputation_events', 'topic', { durable: true });
+            await this.channel.assertExchange('gig_events', 'topic', { durable: true });
 
             this.connection.on('error', (err) => {
                 console.error('❌ [Reputation] RabbitMQ connection error:', err);
@@ -47,13 +48,8 @@ class EventProcessor {
             const queue = 'reputation_service_queue';
             await this.channel.assertQueue(queue, { durable: true });
 
-            // Bind to all relevant routing keys
-            const routingKeys = [
-                'gig.completed',
-                'gig.posted',
-                'gig.rated',
-                'gig.application.accepted',
-                'gig.application.rejected',
+            // Bind to all relevant routing keys from reputation_events
+            const reputationRoutingKeys = [
                 'boost.received',
                 'boost.given',
                 'user.profile.viewed',
@@ -62,8 +58,24 @@ class EventProcessor {
                 'clan.contribution'
             ];
 
-            for (const routingKey of routingKeys) {
+            for (const routingKey of reputationRoutingKeys) {
                 await this.channel.bindQueue(queue, 'reputation_events', routingKey);
+            }
+
+            // Bind to gig lifecycle events from gig_events exchange
+            const gigRoutingKeys = [
+                'gig.completed',
+                'gig.posted',
+                'gig.rated',
+                'gig.application.created',
+                'gig.application.accepted',
+                'gig.application.rejected',
+                'gig.work.submitted',
+                'gig.submission.reviewed'
+            ];
+
+            for (const routingKey of gigRoutingKeys) {
+                await this.channel.bindQueue(queue, 'gig_events', routingKey);
             }
 
             // Start consuming messages
@@ -110,8 +122,24 @@ class EventProcessor {
                 await this.handleGigRated(eventData);
                 break;
 
+            case 'gig.application.created':
+                await this.handleApplicationCreated(eventData);
+                break;
+
             case 'gig.application.accepted':
                 await this.handleApplicationAccepted(eventData);
+                break;
+
+            case 'gig.application.rejected':
+                await this.handleApplicationRejected(eventData);
+                break;
+
+            case 'gig.work.submitted':
+                await this.handleWorkSubmitted(eventData);
+                break;
+
+            case 'gig.submission.reviewed':
+                await this.handleSubmissionReviewed(eventData);
                 break;
 
             case 'boost.received':
@@ -165,30 +193,40 @@ class EventProcessor {
 
     calculateImpact(eventType) {
         const impactMap = {
-            'gig_completed': 'HIGH',
-            'gig_posted': 'MEDIUM',
-            'gig_rated': 'MEDIUM',
-            'boost_received': 'LOW',
-            'boost_given': 'LOW',
-            'application_submitted': 'LOW',
-            'application_accepted': 'MEDIUM',
-            'application_rejected': 'LOW',
-            'profile_updated': 'LOW'
+            'gig.completed': 'HIGH',
+            'gig.posted': 'MEDIUM',
+            'gig.rated': 'MEDIUM',
+            'gig.application.created': 'LOW',
+            'gig.application.accepted': 'MEDIUM',
+            'gig.application.rejected': 'LOW',
+            'gig.work.submitted': 'MEDIUM',
+            'gig.submission.reviewed': 'MEDIUM',
+            'boost.received': 'LOW',
+            'boost.given': 'LOW',
+            'user.profile.viewed': 'LOW',
+            'user.connection.made': 'LOW',
+            'user.verified': 'HIGH',
+            'clan.contribution': 'MEDIUM'
         };
         return impactMap[eventType] || 'LOW';
     }
 
     calculatePointsAwarded(eventType) {
         const pointsMap = {
-            'gig_completed': 10,
-            'gig_posted': 2,
-            'gig_rated': 5,
-            'boost_received': 5,
-            'boost_given': 1,
-            'application_submitted': 0,
-            'application_accepted': 5,
-            'application_rejected': 0,
-            'profile_updated': 1
+            'gig.completed': 10,
+            'gig.posted': 2,
+            'gig.rated': 5,
+            'gig.application.created': 1,
+            'gig.application.accepted': 5,
+            'gig.application.rejected': -1,
+            'gig.work.submitted': 3,
+            'gig.submission.reviewed': 2,
+            'boost.received': 5,
+            'boost.given': 1,
+            'user.profile.viewed': 0,
+            'user.connection.made': 1,
+            'user.verified': 20,
+            'clan.contribution': 3
         };
         return pointsMap[eventType] || 0;
     }
@@ -245,6 +283,20 @@ class EventProcessor {
         });
     }
 
+    async handleApplicationCreated(eventData) {
+        const { applicationId, applicantId, gigId } = eventData;
+
+        // Log application activity
+        await this.logActivity('gig.application.created', eventData);
+
+        // Small reputation boost for active participation
+        await this.scoringEngine.updateUserReputation(applicantId, {
+            reason: 'application_created',
+            eventId: applicationId,
+            gigId
+        });
+    }
+
     async handleApplicationAccepted(eventData) {
         const { applicationId, applicantId } = eventData;
 
@@ -256,6 +308,58 @@ class EventProcessor {
             reason: 'application_accepted',
             eventId: applicationId
         });
+    }
+
+    async handleApplicationRejected(eventData) {
+        const { applicationId, applicantId } = eventData;
+
+        // Update application metrics (small negative impact)
+        await this.updateApplicationMetrics(applicantId, false);
+
+        // Log the rejection but minimal reputation impact
+        await this.scoringEngine.updateUserReputation(applicantId, {
+            reason: 'application_rejected',
+            eventId: applicationId
+        });
+    }
+
+    async handleWorkSubmitted(eventData) {
+        const { submissionId, applicantId, gigId } = eventData;
+
+        // Log work submission activity
+        await this.logActivity('gig.work.submitted', eventData);
+
+        // Moderate reputation boost for completing work
+        await this.scoringEngine.updateUserReputation(applicantId, {
+            reason: 'work_submitted',
+            eventId: submissionId,
+            gigId
+        });
+    }
+
+    async handleSubmissionReviewed(eventData) {
+        const { submissionId, applicantId, reviewStatus, rating, gigCompleted } = eventData;
+
+        // Log submission review activity
+        await this.logActivity('gig.submission.reviewed', eventData);
+
+        // Update reputation based on review outcome
+        if (reviewStatus === 'approved' && rating) {
+            // If gig is completed with this review, the gig.completed event will handle final scoring
+            // This is just for the submission review itself
+            await this.scoringEngine.updateUserReputation(applicantId, {
+                reason: 'submission_approved',
+                eventId: submissionId,
+                rating,
+                gigCompleted
+            });
+        } else if (reviewStatus === 'rejected') {
+            // Handle submission rejection
+            await this.scoringEngine.updateUserReputation(applicantId, {
+                reason: 'submission_rejected',
+                eventId: submissionId
+            });
+        }
     }
 
     async handleBoostReceived(eventData) {
@@ -329,9 +433,9 @@ class EventProcessor {
         try {
             // Filter updates to only include valid schema fields
             const validFields = [
-                'totalScore', 'reliabilityScore', 'qualityScore', 'communicationScore', 
-                'timelinessScore', 'overallRating', 'totalGigs', 'completedGigs', 
-                'cancelledGigs', 'avgDeliveryTime', 'onTimeDeliveryRate', 
+                'totalScore', 'reliabilityScore', 'qualityScore', 'communicationScore',
+                'timelinessScore', 'overallRating', 'totalGigs', 'completedGigs',
+                'cancelledGigs', 'avgDeliveryTime', 'onTimeDeliveryRate',
                 'clientSatisfactionRate', 'responseTime', 'level', 'rank', 'badges'
             ];
 

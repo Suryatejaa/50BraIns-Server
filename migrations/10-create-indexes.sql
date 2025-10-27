@@ -257,6 +257,52 @@ BEGIN
             CREATE INDEX IF NOT EXISTS "gigTasks_status_idx" ON "gigTasks"("status");
         END IF;
     END IF;
+
+    -- ApplicationWorkHistory table indexes
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'application_work_history') THEN
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'application_work_history' AND column_name = 'applicationId') THEN
+            CREATE UNIQUE INDEX IF NOT EXISTS "application_work_history_applicationId_key" ON "application_work_history"("applicationId");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'application_work_history' AND column_name = 'applicantId') THEN
+            CREATE INDEX IF NOT EXISTS "application_work_history_applicantId_idx" ON "application_work_history"("applicantId");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'application_work_history' AND column_name = 'gigOwnerId') THEN
+            CREATE INDEX IF NOT EXISTS "application_work_history_gigOwnerId_idx" ON "application_work_history"("gigOwnerId");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'application_work_history' AND column_name = 'gigId') THEN
+            CREATE INDEX IF NOT EXISTS "application_work_history_gigId_idx" ON "application_work_history"("gigId");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'application_work_history' AND column_name = 'applicationStatus') THEN
+            CREATE INDEX IF NOT EXISTS "application_work_history_applicationStatus_idx" ON "application_work_history"("applicationStatus");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'application_work_history' AND column_name = 'paymentStatus') THEN
+            CREATE INDEX IF NOT EXISTS "application_work_history_paymentStatus_idx" ON "application_work_history"("paymentStatus");
+        END IF;
+    END IF;
+
+    -- CampaignHistory table indexes
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'campaign_history') THEN
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'campaign_history' AND column_name = 'gigId') THEN
+            CREATE UNIQUE INDEX IF NOT EXISTS "campaign_history_gigId_key" ON "campaign_history"("gigId");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'campaign_history' AND column_name = 'brandId') THEN
+            CREATE INDEX IF NOT EXISTS "campaign_history_brandId_idx" ON "campaign_history"("brandId");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'campaign_history' AND column_name = 'status') THEN
+            CREATE INDEX IF NOT EXISTS "campaign_history_status_idx" ON "campaign_history"("status");
+        END IF;
+        
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'campaign_history' AND column_name = 'createdAt') THEN
+            CREATE INDEX IF NOT EXISTS "campaign_history_createdAt_idx" ON "campaign_history"("createdAt");
+        END IF;
+    END IF;
 END
 $$;
 

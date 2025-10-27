@@ -236,6 +236,112 @@ model GigTask {
   @@map("gigTasks")
 }
 
+// gig-service/prisma/schema.prisma
+
+model ApplicationWorkHistory {
+  id                  String   @id @default(uuid())
+  
+  // Core IDs
+  applicationId       String   @unique // Reference to the application
+  gigId               String
+  applicantId         String   // Creator/Influencer user ID
+  gigOwnerId          String   // Brand user ID
+  
+  // Financial Info
+  gigPrice            Decimal?  @db.Decimal(10, 2) // Original gig budget/price
+  quotedPrice         Decimal?  @db.Decimal(10, 2) // Price quoted by applicant
+  
+  // Application Timeline
+  appliedAt           DateTime @default(now())
+  acceptedAt          DateTime?
+  rejectedAt          DateTime?
+  applicationStatus   WorkHistoryApplicationStatus // Use enum instead of string
+  
+  // Work Submission Timeline
+  workSubmittedAt     DateTime?
+  workReviewedAt      DateTime?
+  submissionStatus    WorkHistorySubmissionStatus?  // Use enum instead of string
+  
+  // Completion & Payment
+  completedAt         DateTime?
+  paidAt              DateTime?
+  paymentAmount       Decimal?  @db.Decimal(10, 2)
+  paymentStatus       WorkHistoryPaymentStatus?   // Use enum instead of string
+  
+  // Additional Context
+  withdrawnAt         DateTime?
+  withdrawalReason    String?
+  revisionCount       Int       @default(0)
+  lastActivityAt      DateTime  @default(now())
+  
+  // Metadata
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  @@index([applicantId])
+  @@index([gigOwnerId])
+  @@index([gigId])
+  @@index([applicationStatus])
+  @@index([paymentStatus])
+  @@map("application_work_history")
+}
+
+
+model CampaignHistory {
+  id                    String   @id @default(uuid())
+  
+  // Core IDs
+  gigId                 String   @unique
+  brandId               String   // Brand/Gig owner user ID
+  
+  // Campaign Details
+  campaignTitle         String
+  campaignDescription   String?  @db.Text
+  campaignType          String   // 'INSTAGRAM_POST', 'YOUTUBE_VIDEO', 'TIKTOK', etc.
+  budget                Decimal  @db.Decimal(10, 2)
+  gigPrice              Decimal? @db.Decimal(10, 2) // Final agreed price for the gig
+  
+  // Timeline
+  createdAt             DateTime @default(now())
+  publishedAt           DateTime?
+  startDate             DateTime?
+  endDate               DateTime?
+  closedAt              DateTime?
+  
+  // Campaign Status
+  status                CampaignStatus   // Use enum instead of string
+  
+  // Metrics
+  totalApplications     Int      @default(0)
+  acceptedApplications  Int      @default(0)
+  rejectedApplications  Int      @default(0)
+  completedWorks        Int      @default(0)
+  totalSpent            Decimal  @default(0) @db.Decimal(10, 2)
+  avgCompletionTime     Int?     // In hours
+  
+  // Performance
+  totalReach            BigInt?  // Estimated reach
+  totalEngagement       BigInt?  // Total likes/comments/shares
+  conversionRate        Decimal? @db.Decimal(5, 2) // Percentage
+  roi                   Decimal? @db.Decimal(5, 2) // Return on investment
+  
+  // Ratings & Reviews
+  avgInfluencerRating   Decimal? @db.Decimal(3, 2) // Brand rates influencers
+  avgBrandRating        Decimal? @db.Decimal(3, 2) // Influencers rate brand
+  
+  // Additional Info
+  tags                  String[] // Campaign tags/categories
+  notes                 String?  @db.Text
+  
+  updatedAt             DateTime @updatedAt
+  
+  @@index([brandId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("campaign_history")
+}
+
+
 enum GigStatus {
   DRAFT      // Created but not published
   OPEN       // Published and accepting applications
@@ -293,4 +399,36 @@ enum GigType {
   PRODUCT    // Physical product delivery required
   VISIT      // On-site visit required
   REMOTE     // Remote work
+}
+
+enum WorkHistoryApplicationStatus {
+  PENDING   // Application submitted, awaiting review
+  APPROVED  // Application approved, gig assigned
+  SUBMITTED // Work has been submitted by applicant
+  CLOSED    // Work approved by brand, application complete
+  REJECTED  // Application rejected
+  WITHDRAWN // Applicant withdrew their application
+}
+
+enum WorkHistorySubmissionStatus {
+  PENDING   // Submitted, awaiting review
+  APPROVED  // Work approved
+  REJECTED  // Work rejected, needs revision
+  REVISION  // Revision requested
+}
+
+enum WorkHistoryPaymentStatus {
+  PENDING      // Payment not yet initiated
+  PROCESSING   // Payment being processed
+  PAID         // Payment completed
+  FAILED       // Payment failed
+}
+
+enum CampaignStatus {
+  DRAFT        // Campaign created but not published
+  PUBLISHED    // Campaign published and active
+  ACTIVE       // Campaign is actively running
+  PAUSED       // Campaign temporarily paused
+  COMPLETED    // Campaign completed successfully
+  CANCELLED    // Campaign cancelled
 }

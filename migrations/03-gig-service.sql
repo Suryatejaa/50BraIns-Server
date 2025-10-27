@@ -7,9 +7,11 @@
 -- ============================================================================
 
 -- Disable triggers temporarily
-SET session_replication_role = replica;
+SET session_replication_role = 'replica';
 
 -- Drop existing tables in reverse dependency order
+DROP TABLE IF EXISTS "application_work_history";
+DROP TABLE IF EXISTS "campaign_history";
 DROP TABLE IF EXISTS "gigTasks";
 DROP TABLE IF EXISTS "gigMilestones";
 DROP TABLE IF EXISTS "gigAssignments";
@@ -195,6 +197,71 @@ CREATE TABLE "gigTasks" (
     CONSTRAINT "gigTasks_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE "application_work_history" (
+    "id" TEXT NOT NULL,
+    "applicationId" TEXT NOT NULL,
+    "gigId" TEXT NOT NULL,
+    "applicantId" TEXT NOT NULL,
+    "gigOwnerId" TEXT NOT NULL,
+    "gigPrice" DECIMAL(10,2),
+    "quotedPrice" DECIMAL(10,2),
+    "appliedAt" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "acceptedAt" TIMESTAMPTZ(6),
+    "rejectedAt" TIMESTAMPTZ(6),
+    "applicationStatus" "WorkHistoryApplicationStatus" NOT NULL,
+    "workSubmittedAt" TIMESTAMPTZ(6),
+    "workReviewedAt" TIMESTAMPTZ(6),
+    "submissionStatus" "WorkHistorySubmissionStatus",
+    "completedAt" TIMESTAMPTZ(6),
+    "paidAt" TIMESTAMPTZ(6),
+    "paymentAmount" DECIMAL(10,2),
+    "paymentStatus" "WorkHistoryPaymentStatus",
+    "withdrawnAt" TIMESTAMPTZ(6),
+    "withdrawalReason" TEXT,
+    "revisionCount" INTEGER DEFAULT 0,
+    "lastActivityAt" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "application_work_history_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "application_work_history_applicationId_key" UNIQUE ("applicationId")
+);
+
+CREATE TABLE "campaign_history" (
+    "id" TEXT NOT NULL,
+    "gigId" TEXT NOT NULL,
+    "brandId" TEXT NOT NULL,
+    "campaignTitle" TEXT NOT NULL,
+    "campaignDescription" TEXT,
+    "campaignType" TEXT NOT NULL,
+    "budget" DECIMAL(10,2) NOT NULL,
+    "gigPrice" DECIMAL(10,2),
+    "createdAt" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "publishedAt" TIMESTAMPTZ(6),
+    "startDate" TIMESTAMPTZ(6),
+    "endDate" TIMESTAMPTZ(6),
+    "closedAt" TIMESTAMPTZ(6),
+    "status" "CampaignStatus" NOT NULL,
+    "totalApplications" INTEGER DEFAULT 0,
+    "acceptedApplications" INTEGER DEFAULT 0,
+    "rejectedApplications" INTEGER DEFAULT 0,
+    "completedWorks" INTEGER DEFAULT 0,
+    "totalSpent" DECIMAL(10,2) DEFAULT 0,
+    "avgCompletionTime" INTEGER,
+    "totalReach" BIGINT,
+    "totalEngagement" BIGINT,
+    "conversionRate" DECIMAL(5,2),
+    "roi" DECIMAL(5,2),
+    "avgInfluencerRating" DECIMAL(3,2),
+    "avgBrandRating" DECIMAL(3,2),
+    "tags" TEXT[] DEFAULT ARRAY[]::"text"[],
+    "notes" TEXT,
+    "updatedAt" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "campaign_history_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "campaign_history_gigId_key" UNIQUE ("gigId")
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS "gigBoostEvents_gigId_idx" ON "gigBoostEvents"("gigId");
 CREATE INDEX IF NOT EXISTS "gigBoostEvents_isActive_idx" ON "gigBoostEvents"("isActive");
@@ -204,7 +271,19 @@ CREATE INDEX IF NOT EXISTS "gigCreditEvents_gigId_idx" ON "gigCreditEvents"("gig
 CREATE INDEX IF NOT EXISTS "gigCreditEvents_userId_idx" ON "gigCreditEvents"("userId");
 CREATE INDEX IF NOT EXISTS "gigCreditEvents_eventType_idx" ON "gigCreditEvents"("eventType");
 
+-- Application Work History indexes
+CREATE INDEX IF NOT EXISTS "application_work_history_applicantId_idx" ON "application_work_history"("applicantId");
+CREATE INDEX IF NOT EXISTS "application_work_history_gigOwnerId_idx" ON "application_work_history"("gigOwnerId");
+CREATE INDEX IF NOT EXISTS "application_work_history_gigId_idx" ON "application_work_history"("gigId");
+CREATE INDEX IF NOT EXISTS "application_work_history_applicationStatus_idx" ON "application_work_history"("applicationStatus");
+CREATE INDEX IF NOT EXISTS "application_work_history_paymentStatus_idx" ON "application_work_history"("paymentStatus");
+
+-- Campaign History indexes
+CREATE INDEX IF NOT EXISTS "campaign_history_brandId_idx" ON "campaign_history"("brandId");
+CREATE INDEX IF NOT EXISTS "campaign_history_status_idx" ON "campaign_history"("status");
+CREATE INDEX IF NOT EXISTS "campaign_history_createdAt_idx" ON "campaign_history"("createdAt");
+
 -- Re-enable triggers
-SET session_replication_role = DEFAULT;
+SET session_replication_role = 'origin';
 
 SELECT 'SUCCESS: Gig service tables created!' as result;
