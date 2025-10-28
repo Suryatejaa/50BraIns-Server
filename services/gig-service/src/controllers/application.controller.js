@@ -726,21 +726,21 @@ class ApplicationController {
             });
 
             // Publish work history event for application creation
-            await rabbitmqService.publishToExchange('gig_events', 'gig.application.created', {
-                applicationId: application.id,
-                gigId: id,
-                applicantId: applicantId,
-                applicantType: value.applicantType,
-                proposal: value.proposal,
-                quotedPrice: value.quotedPrice,
-                estimatedTime: value.estimatedTime,
-                createdAt: new Date().toISOString(),
-                gigData: {
-                    title: gig.title,
-                    postedById: gig.postedById,
-                    gigType: gig.gigType
-                }
-            });
+            // await rabbitmqService.publishToExchange('gig_events', 'gig.application.created', {
+            //     applicationId: application.id,
+            //     gigId: id,
+            //     applicantId: applicantId,
+            //     applicantType: value.applicantType,
+            //     proposal: value.proposal,
+            //     quotedPrice: value.quotedPrice,
+            //     estimatedTime: value.estimatedTime,
+            //     createdAt: new Date().toISOString(),
+            //     gigData: {
+            //         title: gig.title,
+            //         postedById: gig.postedById,
+            //         gigType: gig.gigType
+            //     }
+            // });
 
             console.log('🚀 [Gig Service] Publishing application_confirmed event:', {
                 gigId: id,
@@ -1018,15 +1018,15 @@ class ApplicationController {
             });
 
             // Send notification to invited user
-            await this.publishEvent('gig_invitation_notification', {
-                recipientId: applicantId,
-                recipientType: 'invitee',
-                gigId: id,
-                gigTitle: gig.title,
-                applicationId: application.id,
-                invitedByOwnerId: ownerId,
-                message: `You have been invited to work on "${gig.title}". Please review and accept the invitation.`
-            });
+            // await this.publishEvent('gig_invitation_notification', {
+            //     recipientId: applicantId,
+            //     recipientType: 'invitee',
+            //     gigId: id,
+            //     gigTitle: gig.title,
+            //     applicationId: application.id,
+            //     invitedByOwnerId: ownerId,
+            //     message: `You have been invited to work on "${gig.title}". Please review and accept the invitation.`
+            // });
 
             res.status(201).json({
                 success: true,
@@ -1247,24 +1247,24 @@ class ApplicationController {
                 console.error('❌ [Gig Service] Failed to publish work_submitted event:', error);
             }
 
-            try {
-                console.log('🚀 [Gig Service] Publishing work_submitted_notification event to brand...');
-                await this.publishEvent('work_submitted_notification', {
-                    recipientId: gig.postedById,
-                    recipientType: 'brand',
-                    gigId: id,
-                    gigTitle: gig.title,
-                    gigOwnerId: gig.postedById,
-                    submissionId: submission.id,
-                    submittedById: req.user.id,
-                    submissionTitle: value.title,
-                    message: `Work has been submitted for "${gig.title}" - "${value.title}"`
-                });
-                console.log('✅ [Gig Service] work_submitted_notification event published successfully to brand:', gig.postedById);
-            } catch (error) {
-                console.error('❌ [Gig Service] Failed to publish work_submitted_notification event:', error);
-                // This is critical - we should still try to send directly if RabbitMQ fails
-            }
+            // try {
+            //     console.log('🚀 [Gig Service] Publishing work_submitted_notification event to brand...');
+            //     await this.publishEvent('work_submitted_notification', {
+            //         recipientId: gig.postedById,
+            //         recipientType: 'brand',
+            //         gigId: id,
+            //         gigTitle: gig.title,
+            //         gigOwnerId: gig.postedById,
+            //         submissionId: submission.id,
+            //         submittedById: req.user.id,
+            //         submissionTitle: value.title,
+            //         message: `Work has been submitted for "${gig.title}" - "${value.title}"`
+            //     });
+            //     console.log('✅ [Gig Service] work_submitted_notification event published successfully to brand:', gig.postedById);
+            // } catch (error) {
+            //     console.error('❌ [Gig Service] Failed to publish work_submitted_notification event:', error);
+            //     // This is critical - we should still try to send directly if RabbitMQ fails
+            // }
 
             try {
                 console.log('🚀 [Gig Service] Publishing work_submission_confirmed event to applicant...');
@@ -1843,20 +1843,22 @@ class ApplicationController {
                 gigId: application.gigId,
                 gigTitle: application.gig.title,
                 applicationId: id,
-                recipientId: application.gig.postedById,
-                applicantType: application.applicantType,
-                gigOwnerId: application.gig.postedById
-            });
-
-            // Send notification to applicant about acceptance
-            await this.publishEvent('application_approved_notification', {
+                applicantId: application.applicantId,
                 recipientId: application.applicantId,
-                recipientType: 'applicant',
-                gigId: application.gigId,
-                gigTitle: application.gig.title,
-                applicationId: id,
+                applicantType: application.applicantType,
+                gigOwnerId: application.gig.postedById,
                 message: `Congratulations! Your application for "${application.gig.title}" has been approved`
             });
+
+            // // Send notification to applicant about acceptance
+            // await this.publishEvent('application_approved_notification', {
+            //     recipientId: application.applicantId,
+            //     recipientType: 'applicant',
+            //     gigId: application.gigId,
+            //     gigTitle: application.gig.title,
+            //     applicationId: id,
+            //     message: `Congratulations! Your application for "${application.gig.title}" has been approved`
+            // });
 
             console.log('✅ [Gig Service] Application approved notification sent for application:', id);
 
@@ -2288,19 +2290,21 @@ class ApplicationController {
                 applicationId: actualApplicationId,
                 acceptedByUserId: userId,
                 gigOwnerId: targetApplication.gig.postedById,
-                clanId: targetApplication.clanId || undefined
+                clanId: targetApplication.clanId || undefined,
+                message: `Your gig invitation for "${targetApplication.gig.title}" has been accepted`
+
             });
 
             // Send notification to gig owner about acceptance
-            await this.publishEvent('gig_invitation_accepted_notification', {
-                recipientId: targetApplication.gig.postedById,
-                recipientType: 'gig_owner',
-                gigId: targetApplication.gigId,
-                gigTitle: targetApplication.gig.title,
-                applicationId: actualApplicationId,
-                acceptedByUserId: userId,
-                message: `Your gig invitation for "${targetApplication.gig.title}" has been accepted`
-            });
+            // await this.publishEvent('gig_invitation_accepted_notification', {
+            //     recipientId: targetApplication.gig.postedById,
+            //     recipientType: 'gig_owner',
+            //     gigId: targetApplication.gigId,
+            //     gigTitle: targetApplication.gig.title,
+            //     applicationId: actualApplicationId,
+            //     acceptedByUserId: userId,
+            //     message: `Your gig invitation for "${targetApplication.gig.title}" has been accepted`
+            // });
             res.json({
                 success: true,
                 message: 'Gig invitation accepted',

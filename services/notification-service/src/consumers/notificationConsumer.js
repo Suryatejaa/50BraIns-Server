@@ -150,15 +150,15 @@ class NotificationConsumer {
 
     async handleGigApplicationAccepted(eventData) {
         try {
-            const { gigId, applicationId, applicantId, applicantType, gigOwnerId } = eventData;
+            const { gigId, applicationId, applicantId,gigTitle, recipientId, applicantType, gigOwnerId } = eventData;
 
             // Notify the applicant that their application was accepted
             await this.createAndSendNotification({
-                userId: applicantId,
+                userId: recipientId,
                 type: 'GIG',
                 category: 'GIG',
                 title: '🎉 Application Accepted!',
-                message: `Great news! Your application for gig "${eventData.gigTitle || gigId}" has been accepted. Start working on it now!`,
+                message: `Great news! Your application for gig "${gigTitle || gigId}" has been accepted. Start working on it now!`,
                 metadata: { gigId, applicationId, applicantType, gigOwnerId }
             });
 
@@ -1053,7 +1053,7 @@ class NotificationConsumer {
 
             // This is handled in work history service - just log for now
             console.log('✅ [Notification Service] Work submitted event logged for work history service');
-            logger.notification('Work submitted event processed for work history', { gigId, submittedById, submissionId });
+            logger.notification('Work submitted event processed for work history', { gigId, submittedById });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling work submitted event:', error);
             logger.error('Error handling work submitted event:', error);
@@ -1391,7 +1391,7 @@ class NotificationConsumer {
     async handleGigInvitationSent(eventData) {
         try {
             console.log('📨 [Notification Service] Handling gig_invitation_sent event:', eventData);
-            const { gigId, gigTitle, invitedUserId, invitedByOwnerId, applicationId, quotedPrice, message } = eventData;
+            const { gigId, gigTitle, invitedUserId, recipientId, invitedByOwnerId, applicationId, quotedPrice, message } = eventData;
             await this.createAndSendNotification({
                 userId: recipientId,
                 type: 'ENGAGEMENT',
@@ -1433,7 +1433,7 @@ class NotificationConsumer {
     async handleGigInvitationAccepted(eventData) {
         try {
             console.log('🎉 [Notification Service] Handling gig_invitation_accepted event:', eventData);
-            const { gigId, gigTitle, acceptedByUserId, gigOwnerId, applicationId } = eventData;
+            const { gigId, gigTitle, acceptedByUserId, recipientId, gigOwnerId,message, applicationId } = eventData;
             await this.createAndSendNotification({
                 userId: recipientId,
                 type: 'ENGAGEMENT',

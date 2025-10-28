@@ -184,11 +184,13 @@ class WebSocketGateway {
                     break;
 
                 case 'subscribe_clan_chat':
-                    await this.handleClanChatSubscription(ws, message, userId);
+                    // Clan service decommissioned for MVP
+                    this.sendError(ws, 'Clan chat service is not available in MVP');
                     break;
 
                 case 'unsubscribe_clan_chat':
-                    await this.handleClanChatUnsubscription(ws, message, userId);
+                    // Clan service decommissioned for MVP  
+                    this.sendError(ws, 'Clan chat service is not available in MVP');
                     break;
 
                 case 'chat':

@@ -8,6 +8,15 @@ class RabbitMQService {
         this.exchangeName = process.env.RABBITMQ_EXCHANGE || 'brains_events';
         // Use admin credentials from environment
         this.url = process.env.RABBITMQ_URL || 'amqp://admin:admin123@localhost:5672';
+
+        // Reconnection management
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectTimeout = null;
+
+        // Message deduplication
+        this.publishedMessages = new Set();
+        this.messageCleanupInterval = null;
     }
 
     async connect() {
@@ -45,11 +54,19 @@ class RabbitMQService {
             this.connection.on('close', () => {
                 console.log('🔌 [Auth Service] RabbitMQ connection closed');
                 this.isConnected = false;
-                // Attempt to reconnect after 5 seconds
-                setTimeout(() => {
-                    this.connect();
-                }, 5000);
+                // Only attempt to reconnect with limits
+                this.scheduleReconnect();
             });
+
+            // Reset reconnect attempts on successful connection
+            this.reconnectAttempts = 0;
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = null;
+            }
+
+            // Start message cleanup interval
+            this.startMessageCleanup();
 
             return true; // Return success
 
@@ -64,12 +81,27 @@ class RabbitMQService {
             }
 
             // Attempt to reconnect after 5 seconds in production
-            setTimeout(() => {
-                this.connect();
-            }, 5000);
+            this.scheduleReconnect();
 
             return false; // Return failure
         }
+    }
+
+    scheduleReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error(`❌ [Auth Service] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Stopping reconnection.`);
+            return;
+        }
+
+        // Exponential backoff: 2^attempt * 1000ms, max 30 seconds
+        const delay = Math.min(Math.pow(2, this.reconnectAttempts) * 1000, 30000);
+        this.reconnectAttempts++;
+
+        console.log(`🔄 [Auth Service] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+
+        this.reconnectTimeout = setTimeout(() => {
+            this.connect();
+        }, delay);
     }
 
     async publishEvent(routingKey, eventData) {
@@ -86,6 +118,16 @@ class RabbitMQService {
                 eventId: `auth_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 service: 'auth-service'
             };
+
+            // Check for duplicate messages
+            const messageKey = `${routingKey}_${baseEvent.eventId}`;
+            if (this.publishedMessages.has(messageKey)) {
+                console.warn(`⚠️ [Auth Service] Duplicate message detected, skipping: ${messageKey}`);
+                return;
+            }
+
+            // Track published message
+            this.publishedMessages.add(messageKey);
 
             const message = JSON.stringify(baseEvent);
             await this.channel.publish(this.exchangeName, routingKey, Buffer.from(message));
@@ -104,6 +146,16 @@ class RabbitMQService {
 
     async close() {
         try {
+            // Clear intervals
+            if (this.messageCleanupInterval) {
+                clearInterval(this.messageCleanupInterval);
+                this.messageCleanupInterval = null;
+            }
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = null;
+            }
+
             if (this.channel) {
                 await this.channel.close();
             }
@@ -114,6 +166,16 @@ class RabbitMQService {
         } catch (error) {
             console.error('❌ [Auth Service] Error closing RabbitMQ connection:', error);
         }
+    }
+
+    startMessageCleanup() {
+        // Clean up old message IDs every 5 minutes to prevent memory leaks
+        this.messageCleanupInterval = setInterval(() => {
+            if (this.publishedMessages.size > 1000) {
+                console.log(`🧹 [Auth Service] Cleaning up message deduplication cache (${this.publishedMessages.size} messages)`);
+                this.publishedMessages.clear();
+            }
+        }, 5 * 60 * 1000);
     }
 }
 

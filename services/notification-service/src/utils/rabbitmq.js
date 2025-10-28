@@ -59,15 +59,12 @@ class RabbitMQService {
     }
 
     async setupNotificationQueues() {
-        // Create notification-specific queues
+        // Create notification-specific queues (MVP scope - decommissioned services removed)
         const notificationQueues = [
-            'notifications.gig.events',
-            'notifications.clan.events',
-            'notifications.user.events',
-            'notifications.reputation.events',
-            'notifications.credit.events',
-            'notifications.auth.events',
-            'notifications.brains.events'
+            'notifications.gig.events',     // Core gig functionality
+            'notifications.user.events',    // User management 
+            'notifications.auth.events',    // Authentication events
+            'notifications.brains.events'   // General platform events
         ];
 
         for (const queueName of notificationQueues) {
@@ -114,9 +111,9 @@ class RabbitMQService {
 
         // NEW: Bind to work submission and application notification events
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted');
-        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted_notification');
+        // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed');
-        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed_notification');
+        // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'application_confirmed');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'new_application_received');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'application_withdrawn');
@@ -126,9 +123,9 @@ class RabbitMQService {
 
         // NEW: Bind to invitation events
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_sent');
-        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_notification');
+        // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_accepted');
-        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_accepted_notification');
+        // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_accepted_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_rejected');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_rejected_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'clan_gig_invitation_accepted_member_notification');
@@ -152,13 +149,14 @@ class RabbitMQService {
         await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.reputation.updated');
         await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.updated');
 
-        // Bind to specific User/Auth Service events
-        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.registered');
-        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.login');
-        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.password_reset');
-        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.reactivated');
-        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deleted');
-        await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deactivated');
+        // Bind to specific User/Auth Service events - CONSOLIDATED TO PREVENT DUPLICATES
+        // Note: All auth events now only bound to notifications.brains.events to prevent message duplication
+        // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.registered'); // REMOVED - already in brains.events
+        // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.login'); // REMOVED - already in brains.events
+        // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.password_reset');
+        // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.reactivated'); // REMOVED - already in brains.events
+        // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deleted'); // REMOVED - already in brains.events
+        // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deactivated'); // REMOVED - already in brains.events
 
         // Bind to Reputation Service events
         await this.channel.bindQueue('notifications.reputation.events', 'reputation_events', 'gig.completed');
@@ -178,14 +176,12 @@ class RabbitMQService {
 
 
 
-        // Start consuming from all notification queues
+        // Start consuming from core notification queues only (MVP scope)
         const queues = [
-            'notifications.user.events',
-            'notifications.clan.events',
-            'notifications.gig.events',
-            'notifications.credit.events',
-            'notifications.reputation.events',
-            'notifications.brains.events'  // Add this queue for auth/user events
+            'notifications.user.events',    // User management 
+            'notifications.gig.events',     // Core gig functionality
+            'notifications.brains.events'   // General platform events including auth
+            // Decommissioned: clan, credit, reputation, work-history, social-media
         ];
 
         for (const queueName of queues) {
@@ -252,51 +248,8 @@ class RabbitMQService {
             case 'user.deactivated':
                 await consumer.handleUserDeactivated(eventData);
                 break;
-            // Clan Events - direct routing keys
-            case 'clan.created':
-                await consumer.handleClanCreated(eventData);
-                break;
-            case 'clan.member.joined':
-                await consumer.handleClanJoined(eventData);
-                break;
-            case 'clan.member.left':
-                await consumer.handleClanLeft(eventData);
-                break;
-            case 'clan.join.request':
-                await consumer.handleClanJoinRequest(eventData);
-                break;
-            case 'clan.join.request.approved':
-                await consumer.handleClanJoinRequestApproved(eventData);
-                break;
-            case 'clan.join.request.rejected':
-                await consumer.handleClanJoinRequestRejected(eventData);
-                break;
-            case 'clan.member.role.updated':
-                await consumer.handleClanMemberRoleUpdated(eventData);
-                break;
-            case 'clan.member.removed':
-                await consumer.handleClanMemberRemoved(eventData);
-                break;
-            case 'clan.admin.added':
-                await consumer.handleClanAdminAdded(eventData);
-                break;
-            case 'clan.admin.removed':
-                await consumer.handleClanAdminRemoved(eventData);
-                break;
-            case 'clan.ownership.transferred':
-                await consumer.handleClanOwnershipTransferred(eventData);
-                break;
-            case 'clan.message.sent':
-                await consumer.handleClanMessageSent(eventData);
-                break;
-            case 'clan.reputation.updated':
-                await consumer.handleClanReputationUpdated(eventData);
-                break;
-            case 'clan.updated':
-                await consumer.handleClanUpdated(eventData);
-                break;
 
-            // Gig Events - direct routing keys
+            // Gig Events - direct routing keys (MVP core functionality)
             case 'gig_created':
                 await consumer.handleGigCreated(eventData);
                 break;
@@ -314,6 +267,12 @@ class RabbitMQService {
                 break;
             case 'application_submitted':
                 await consumer.handleGigApplied(eventData);
+                break;
+            case 'new_application_received':
+                await consumer.handleNewApplicationReceived(eventData);
+                break;
+            case 'application_confirmed':
+                await consumer.handleApplicationConfirmed(eventData);
                 break;
             case 'application_accepted':
                 await consumer.handleGigApplicationAccepted(eventData);
@@ -336,102 +295,39 @@ class RabbitMQService {
             case 'gig_task_updated':
                 await consumer.handleGigTaskUpdated(eventData);
                 break;
-
-            // Credit Events - direct routing keys
-            case 'boost_event':
-                await consumer.handleBoostEvent(eventData);
-                break;
-            case 'credit_event':
-                await consumer.handleCreditEvent(eventData);
-                break;
-
-            // Reputation Events - direct routing keys
-            case 'reputation_updated':
-                await consumer.handleReputationUpdated(eventData);
-                break;
-            case 'user.tier.changed':
-                await consumer.handleReputationUpdated(eventData);
-                break;
-
-
-
-            // Clan Gig Events - direct routing keys from gig service
-            case 'clan_gig_approved_member_notification':
-                await consumer.handleClanGigApprovedMemberNotification(eventData);
-                break;
-            case 'clan_gig_approved':
-                await consumer.handleClanGigApproved(eventData);
-                break;
-            case 'clan_milestone_created_member_notification':
-                await consumer.handleClanMilestoneCreatedMemberNotification(eventData);
-                break;
-            case 'clan_milestone_approved_member_notification':
-                await consumer.handleClanMilestoneApprovedMemberNotification(eventData);
-                break;
-            case 'clan_task_assigned_member_notification':
-                await consumer.handleClanTaskAssignedMemberNotification(eventData);
-                break;
-            case 'clan_task_status_updated_member_notification':
-                await consumer.handleClanTaskStatusUpdatedMemberNotification(eventData);
-                break;
-
-            // NEW: Work submission and application notification events
-            case 'work_submitted':
-                await consumer.handleWorkSubmitted(eventData);
-                break;
-            case 'work_submitted_notification':
-                await consumer.handleWorkSubmittedNotification(eventData);
-                break;
-            case 'submission_reviewed':
-                await consumer.handleSubmissionReviewed(eventData);
-                break;
-            case 'submission_reviewed_notification':
-                await consumer.handleSubmissionReviewedNotification(eventData);
-                break;
-            case 'application_confirmed':
-                await consumer.handleApplicationConfirmed(eventData);
-                break;
-            case 'new_application_received':
-                await consumer.handleNewApplicationReceived(eventData);
-                break;
-            case 'application_withdrawn':
-                await consumer.handleApplicationWithdrawn(eventData);
-                break;
-            case 'application_withdrawn_notification':
-                await consumer.handleApplicationWithdrawnNotification(eventData);
-                break;
-            case 'application_approved_notification':
-                await consumer.handleApplicationApprovedNotification(eventData);
-                break;
-            case 'work_submission_confirmed':
-                await consumer.handleWorkSubmissionConfirmed(eventData);
-                break;
-
-            // NEW: Invitation Events
             case 'gig_invitation_sent':
                 await consumer.handleGigInvitationSent(eventData);
                 break;
-            case 'gig_invitation_notification':
-                await consumer.handleGigInvitationNotification(eventData);
+            case 'work_submitted':
+                await consumer.handleWorkSubmitted(eventData);
                 break;
             case 'gig_invitation_accepted':
                 await consumer.handleGigInvitationAccepted(eventData);
                 break;
-            case 'gig_invitation_accepted_notification':
-                await consumer.handleGigInvitationAcceptedNotification(eventData);
+            case 'application_rejected':
+                await consumer.handleGigApplicationRejected(eventData);
                 break;
-            case 'gig_invitation_rejected':
-                await consumer.handleGigInvitationRejected(eventData);
+            case 'submission_reviewed':
+                await consumer.handleSubmissionReviewed(eventData);
                 break;
-            case 'gig_invitation_rejected_notification':
-                await consumer.handleGigInvitationRejectedNotification(eventData);
-                break;
-            case 'clan_gig_invitation_accepted_member_notification':
-                await consumer.handleClanGigInvitationAcceptedMemberNotification(eventData);
-                break;
+            // Decommissioned service events removed for MVP:
+            // - All clan events (clan.created, clan.member.joined, etc.)
+            // - All credit events (boost_event, credit_event) 
+            // - All reputation events (reputation_updated, user.tier.changed)
+            // - All work-history events
+            // - All social media events
 
             default:
-                console.log(`⚠️ [Notification Service] Unhandled event: ${routingKey}`);
+                if (routingKey.includes('clan.') ||
+                    routingKey.includes('credit_') ||
+                    routingKey.includes('boost_') ||
+                    routingKey.includes('reputation_') ||
+                    routingKey.includes('work_') ||
+                    routingKey.includes('social_')) {
+                    console.log(`ℹ️ [Notification Service] Ignoring decommissioned service event: ${routingKey}`);
+                } else {
+                    console.log(`⚠️ [Notification Service] Unhandled event: ${routingKey}`);
+                }
         }
     }
 

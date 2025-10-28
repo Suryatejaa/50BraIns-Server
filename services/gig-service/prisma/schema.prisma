@@ -42,6 +42,7 @@ model Gig {
   assignedToId  String?  // User or Clan ID who got the gig
   assignedToType String? // "user" or "clan"
   completedAt   DateTime?
+  isPublic      Boolean  @default(true)
   
   // Gig type and address fields
   gigType       GigType  @default(REMOTE) // "PRODUCT", "VISIT", "REMOTE"

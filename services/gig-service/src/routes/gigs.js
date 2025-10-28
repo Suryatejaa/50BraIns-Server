@@ -16,6 +16,9 @@ router.post('/', requireAuth, asyncHandler(gig_controller.createGig));
 // POST /gigs/:gigId/change-status - Change gig status (authenticated)
 router.post('/:gigId/change-status', requireAuth, asyncHandler(gig_controller.changeGigStatus));
 
+// PUT /:gigId/change-visibility - Change gig visibility (authenticated)
+router.put('/:gigId/change-visibility', requireAuth, asyncHandler(gig_controller.changeGigVisibility));
+
 // POST /gigs/draft - Save gig as draft (authenticated)
 router.post('/draft', requireAuth, asyncHandler(gig_controller.saveDraft));
 
@@ -175,8 +178,8 @@ router.get('/:gigId/tasks', requireAuth, asyncHandler(gigController.getGigTasks)
 
 // Work History Routes
 router.get('/work-history/applicant/:applicantId', workHistoryController.getApplicantHistory);
-router.get('/work-history/applicant/:applicantId/earnings', workHistoryController.getApplicantEarnings);
 router.patch('/work-history/application/:applicationId', workHistoryController.updateWorkHistory);
+router.get('/work-history/applicant/:applicantId/earnings', workHistoryController.getApplicantEarnings);
 
 // Campaign History Routes
 router.get('/campaigns/brand/:brandId', campaignHistoryController.getBrandCampaigns);

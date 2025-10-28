@@ -1036,12 +1036,27 @@ class GigController {
                 postedById: id
             };
 
-            // Add status filter if provided
+            // Add status filter if provided with mapping for convenience
             if (status) {
-                if (Array.isArray(status)) {
-                    where.status = { in: status };
+                let statusValues = Array.isArray(status) ? status : [status];
+
+                // Map convenience status "ACTIVE" to actual valid statuses
+                const mappedStatuses = [];
+                for (const stat of statusValues) {
+                    if (stat === 'ACTIVE') {
+                        // "ACTIVE" maps to gigs that are open, assigned, or in progress
+                        mappedStatuses.push('OPEN', 'ASSIGNED', 'IN_PROGRESS');
+                    } else {
+                        mappedStatuses.push(stat);
+                    }
+                }
+
+                // Remove duplicates and set the filter
+                const uniqueStatuses = [...new Set(mappedStatuses)];
+                if (uniqueStatuses.length === 1) {
+                    where.status = uniqueStatuses[0];
                 } else {
-                    where.status = status;
+                    where.status = { in: uniqueStatuses };
                 }
             }
 

@@ -3,6 +3,7 @@ const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
 const Joi = require('joi');
 const { title } = require('process');
+const { isPromise } = require('util/types');
 class GigController {
     constructor() {
         this.prisma = databaseService.getClient();
@@ -30,7 +31,7 @@ class GigController {
         deliverables: Joi.array().items(Joi.string()).default([]),
         requirements: Joi.string().optional().allow(null, ''),
         deadline: Joi.date().iso().optional(),
-
+        isPublic: Joi.boolean().default(true),
         // Gig type and address fields
         gigType: Joi.string().valid('PRODUCT', 'VISIT', 'REMOTE').default('REMOTE'),
         address: Joi.string().when('gigType', {
@@ -507,7 +508,8 @@ class GigController {
                     brandName: brandData.name,
                     brandUsername: brandData.username,
                     brandAvatar: brandData.profilePicture,
-                    brandVerified: brandData.verified
+                    brandVerified: brandData.verified,
+                    isPublic: gigData.isPublic // Default to true if not specified
                 }
             });
 
@@ -523,21 +525,21 @@ class GigController {
             });
 
             // Publish reputation event for gig posting
-            try {
-                await rabbitmqService.publishReputationEvent('gig.posted', {
-                    gigId: gig.id,
-                    clientId: id,
-                    gigData: {
-                        title: gig.title,
-                        category: gig.category,
-                        budgetAmount: gig.budgetMax || 0,
-                        postedAt: new Date().toISOString()
-                    }
-                });
-                console.log('✅ [Gig Service] Reputation event published for gig posting:', gig.id);
-            } catch (reputationError) {
-                console.error('❌ [Gig Service] Failed to publish reputation event for gig posting:', reputationError);
-            }
+            // try {
+            //     await rabbitmqService.publishReputationEvent('gig.posted', {
+            //         gigId: gig.id,
+            //         clientId: id,
+            //         gigData: {
+            //             title: gig.title,
+            //             category: gig.category,
+            //             budgetAmount: gig.budgetMax || 0,
+            //             postedAt: new Date().toISOString()
+            //         }
+            //     });
+            //     console.log('✅ [Gig Service] Reputation event published for gig posting:', gig.id);
+            // } catch (reputationError) {
+            //     console.error('❌ [Gig Service] Failed to publish reputation event for gig posting:', reputationError);
+            // }
 
             res.status(201).json({
                 success: true,
@@ -757,9 +759,70 @@ class GigController {
         }
     };
 
+    //change gig visibility
+    changeGigVisibility = async (req, res) => {
+        try {
+            const { gigId } = req.params;
+            const { isPublic } = req.body;
+            // Validate required parameters
+            if (!gigId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Gig ID is required'
+                });
+            }
+            if (typeof isPublic !== 'boolean') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'isPublic must be a boolean'
+                });
+            }
+            // Get user ID from headers or request
+            const userId = req.headers['x-user-id'] || req.user?.id;
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'User ID not found in request'
+                });
+            }
+            //Only owner can change the visibility
+            const gig = await this.prisma.gig.findUnique({
+                where: { id: gigId }
+            });
+            if (!gig) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Gig not found'
+                });
+            }
+            if (gig.postedById !== userId) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You are not authorized to change the visibility of this gig'
+                });
+            }
+            const updatedGig = await this.prisma.gig.update({
+                where: { id: gigId },
+                data: { isPublic }
+            });
+            res.status(200).json({
+                success: true,
+                message: 'Gig visibility updated successfully',
+                data: updatedGig
+            });
+        } catch (error) {
+            console.error('Error changing gig visibility:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to change gig visibility'
+            });
+        }
+    };
 
     // GET /gigs - List all gigs with advanced sorting and filtering (public feed)
     getGigs = async (req, res) => {
+        const id = req.headers['x-user-id'] || req.user?.id;
+        const userId = id || null; // Allow null for unauthenticated users
         try {
             const {
                 category,
@@ -810,12 +873,16 @@ class GigController {
 
             // Budget range filter
             if (budgetMin || budgetMax) {
-                where.OR = [
-                    ...(where.OR || []),
+                where.AND = [
+                    ...(where.AND || []),
                     {
-                        AND: [
-                            budgetMin ? { budgetMax: { gte: parseFloat(budgetMin) } } : {},
-                            budgetMax ? { budgetMin: { lte: parseFloat(budgetMax) } } : {}
+                        OR: [
+                            {
+                                AND: [
+                                    budgetMin ? { budgetMax: { gte: parseFloat(budgetMin) } } : {},
+                                    budgetMax ? { budgetMin: { lte: parseFloat(budgetMax) } } : {}
+                                ]
+                            }
                         ]
                     }
                 ];
@@ -839,16 +906,6 @@ class GigController {
                         where.deadline = { lte: monthFromNow };
                         break;
                 }
-            }
-
-            // Search filter
-            if (search) {
-                where.OR = [
-                    { title: { contains: search, mode: 'insensitive' } },
-                    { description: { contains: search, mode: 'insensitive' } },
-                    { skillsRequired: { has: search } },
-                    { category: { contains: search, mode: 'insensitive' } }
-                ];
             }
 
             // Build order by clause
@@ -882,6 +939,61 @@ class GigController {
                     break;
             }
 
+            // Combine privacy and search filters properly
+            const privacyConditions = [];
+            const searchConditions = [];
+            const allConditions = [];
+
+            // Add privacy conditions
+            if (!userId) {
+                // Unauthenticated users can only see public gigs
+                privacyConditions.push({ isPublic: true });
+            } else {
+                // Authenticated users can see:
+                // 1. All public gigs OR
+                // 2. Private gigs they own OR  
+                // 3. Private gigs they have applied to
+                privacyConditions.push(
+                    { isPublic: true },
+                    { postedById: userId },
+                    {
+                        AND: [
+                            { isPublic: false },
+                            {
+                                applications: {
+                                    some: {
+                                        applicantId: userId,
+                                        status: { not: 'WITHDRAWN' }
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                );
+            }
+
+            // Add search conditions if search is provided
+            allConditions.push({ OR: privacyConditions });
+
+            // Add search conditions if present
+            if (search) {
+                allConditions.push({
+                    OR: [
+                        { title: { contains: search, mode: 'insensitive' } },
+                        { description: { contains: search, mode: 'insensitive' } },
+                        { skillsRequired: { has: search } },
+                        { category: { contains: search, mode: 'insensitive' } }
+                    ]
+                });
+            }
+            // Combine with existing AND conditions (like budget filters)
+            if (where.AND && where.AND.length > 0) {
+                allConditions.push(...where.AND);
+            }
+
+            // Set final where condition
+            where.AND = allConditions;
+
             const [gigs, total] = await Promise.all([
                 this.prisma.gig.findMany({
                     where,
@@ -914,6 +1026,7 @@ class GigController {
                         brandVerified: true,
                         createdAt: true,
                         updatedAt: true,
+                        isPublic: true,
                         _count: {
                             select: {
                                 applications: true,
@@ -949,6 +1062,7 @@ class GigController {
                 duration: gig.duration,
                 urgency: gig.urgency,
                 category: gig.category,
+                isPublic: gig.isPublic,
                 deliverables: gig.deliverables,
                 requirements: gig.requirements,
                 deadline: gig.deadline,
@@ -1015,6 +1129,37 @@ class GigController {
         try {
             const { id } = req.params;
             const userId = req.headers['x-user-id'] || req.user?.id;
+
+            // Fetch gig to check visibility
+            const gigCheck = await this.prisma.gig.findUnique({
+                where: { id },
+                select: {
+                    isPublic: true,
+                    postedById: true,
+                    applications: {
+                        where: {
+                            applicantId: userId,
+                            status: { not: 'WITHDRAWN' }
+                        },
+                        select: { id: true }
+                    }
+                }
+            });
+
+            // Check if user can view this gig:
+            // 1. Gig is public, OR
+            // 2. User is the owner, OR
+            // 3. User has an active application for this private gig
+            const canView = gigCheck?.isPublic ||
+                gigCheck?.postedById === userId ||
+                (gigCheck?.applications && gigCheck.applications.length > 0);
+
+            if (!canView) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to view this gig'
+                });
+            }
 
             const gig = await this.prisma.gig.findUnique({
                 where: { id },
@@ -1107,6 +1252,7 @@ class GigController {
                 roleRequired: gig.roleRequired,
                 skillsRequired: gig.skillsRequired,
                 isClanAllowed: gig.isClanAllowed,
+                isPublic: gig.isPublic,
 
                 // Application data (for gig owner)
                 applications: userId === gig.postedById ? gig.applications : [],
