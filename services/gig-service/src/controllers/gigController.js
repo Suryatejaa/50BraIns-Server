@@ -1151,16 +1151,22 @@ class GigController {
             });
 
             // Get total budget across all gigs - irrespective of limit
-            const totalBudgetResult = await this.prisma.gig.aggregate({
+            // We need to sum budgetMax where available, otherwise use budgetMin
+            const allUserGigs = await this.prisma.gig.findMany({
                 where: {
                     postedById: id
                 },
-                _sum: {
-                    budgetMax: true
+                select: {
+                    budgetMax: true,
+                    budgetMin: true
                 }
             });
 
-            const totalBudget = totalBudgetResult._sum.budgetMax || 0;
+            // Calculate total budget: use budgetMax if available, otherwise use budgetMin
+            const totalBudget = allUserGigs.reduce((sum, gig) => {
+                const budget = gig.budgetMax !== null ? gig.budgetMax : (gig.budgetMin || 0);
+                return sum + budget;
+            }, 0);
 
             // Calculate total pending applications for current page gigs
             const totalPendingApplicationsCurrentPage = enhancedGigs.reduce((total, gig) => total + gig.pendingApplicationsCount, 0);
