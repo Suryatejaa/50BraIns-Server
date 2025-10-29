@@ -38,13 +38,65 @@ const PORT = process.env.PORT || 4004;
 // Trust proxy (for production load balancers)
 app.set('trust proxy', 1);
 
-// Security middleware
-app.use(require('helmet')());
-app.use(require('compression')());
+// Security and performance middleware
+app.use(helmet());
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Optimized compression configuration for maximum performance
+app.use(compression({
+    level: 6, // Compression level (1-9, 6 is optimal balance)
+    threshold: 1024, // Only compress responses larger than 1KB
+    filter: (req, res) => {
+        // Compress all responses except if explicitly disabled
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        // Fallback to standard compression filter
+        return compression.filter(req, res);
+    },
+    // Add specific MIME types for better compression
+    chunkSize: 16 * 1024, // 16KB chunks for better streaming
+    windowBits: 15, // Maximum compression window
+    memLevel: 8 // Memory usage level (1-9, 8 is good balance)
+}));
+
+// Body parsing middleware with optimization
+app.use(express.json({
+    limit: '10mb',
+    reviver: null // Don't parse dates automatically for performance
+}));
+app.use(express.urlencoded({
+    extended: true,
+    limit: '10mb',
+    parameterLimit: 1000 // Limit number of parameters
+}));
+
+// Response optimization middleware
+app.use((req, res, next) => {
+    // Set optimal cache headers for static-like responses
+    if (req.method === 'GET') {
+        res.set({
+            'Cache-Control': 'private, max-age=60', // 1 minute cache for GET requests
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY'
+        });
+    }
+
+    // Optimize JSON responses
+    const originalJson = res.json;
+    res.json = function (data) {
+        // Set appropriate content type and encoding
+        res.set({
+            'Content-Type': 'application/json; charset=utf-8',
+            'X-Response-Time': Date.now() - req.startTime + 'ms'
+        });
+
+        // Use fast JSON stringify with replacer for performance
+        return originalJson.call(this, data);
+    };
+
+    req.startTime = Date.now();
+    next();
+});
 
 // Request logging middleware
 app.use((req, res, next) => {

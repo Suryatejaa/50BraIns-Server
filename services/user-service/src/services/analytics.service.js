@@ -12,7 +12,6 @@ const getTrendingInfluencers = async ({ limit = 10, timeframe = '7d' }) => {
         const trending = await prisma.user.findMany({
             where: {
                 roles: { has: 'INFLUENCER' },
-                status: 'ACTIVE',
                 isActive: true,
                 lastActiveAt: {
                     gte: timeframeDate
@@ -61,7 +60,6 @@ const getPopularBrands = async ({ limit = 10, industry }) => {
     try {
         const whereClause = {
             roles: { has: 'BRAND' },
-            status: 'ACTIVE',
             isActive: true
         };
 
@@ -258,11 +256,11 @@ const getUserRanking = async (userId, roles) => {
         const userScore = userAnalytics?.popularityScore || 0;
 
         // Get all users with the same roles and their analytics
-        // First get all user IDs with matching roles and status
+        // First get all user IDs with matching roles and active status
         const matchingUsers = await prisma.user.findMany({
             where: {
                 roles: { hasSome: roles },
-                status: 'ACTIVE'
+                isActive: true
             },
             select: { id: true }
         });
@@ -284,7 +282,7 @@ const getUserRanking = async (userId, roles) => {
         const totalUsers = await prisma.user.count({
             where: {
                 roles: { hasSome: roles },
-                status: 'ACTIVE'
+                isActive: true
             }
         });
 

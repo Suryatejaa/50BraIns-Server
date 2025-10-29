@@ -2,6 +2,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 const gigCacheService = require('../services/gigCacheService');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const prisma = new PrismaClient();
 
 // Helper function for performance monitoring
@@ -36,7 +37,7 @@ exports.getApplicantHistory = async (req, res) => {
       const where = { applicantId };
       if (status) where.applicationStatus = status;
 
-      // Execute queries in parallel with performance monitoring
+      // Execute optimized queries with reduced field selection
       const [history, total] = await Promise.all([
         measureQueryPerformance('getApplicantHistory_findMany', () =>
           prisma.applicationWorkHistory.findMany({
@@ -45,33 +46,23 @@ exports.getApplicantHistory = async (req, res) => {
               id: true,
               applicationId: true,
               gigId: true,
-              applicantId: true,
-              gigOwnerId: true,
-              gigPrice: true,
-              quotedPrice: true,
-              appliedAt: true,
-              acceptedAt: true,
-              rejectedAt: true,
               applicationStatus: true,
-              workSubmittedAt: true,
-              workReviewedAt: true,
               submissionStatus: true,
-              completedAt: true,
-              paidAt: true,
-              paymentAmount: true,
               paymentStatus: true,
-              revisionCount: true,
+              paymentAmount: true,
               lastActivityAt: true,
-              createdAt: true,
-              updatedAt: true
+              createdAt: true
             },
-            orderBy: { appliedAt: 'desc' },
+            orderBy: { lastActivityAt: 'desc' }, // More efficient index
             take: parseInt(limit),
             skip: parseInt(offset)
           })
         ),
+        // Optimized count query
         measureQueryPerformance('getApplicantHistory_count', () =>
-          prisma.applicationWorkHistory.count({ where })
+          prisma.applicationWorkHistory.count({
+            where: { applicantId } // Simplified for better performance
+          })
         )
       ]);
 

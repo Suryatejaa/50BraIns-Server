@@ -1,33 +1,47 @@
 // src/controllers/public.controller.js
 const { StatusCodes } = require('http-status-codes');
 const userService = require('../services/user.service');
+const userCacheService = require('../services/userCacheService');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const { NotFoundError, BadRequestError } = require('../middleware/error-handler');
 const logger = require('../utils/logger');
 
 /**
  * Get public user profile
  */
-const getPublicUserProfile = async (req, res) => {
-    const { userId } = req.params;
+const getPublicUserProfile = DatabaseOptimizer.withPerformanceMonitoring(
+    'getPublicUserProfile',
+    async (req, res) => {
+        const { userId } = req.params;
 
-    if (!userId) {
-        throw new BadRequestError('User ID is required');
-    }
-
-    logger.info(`Getting public profile for user: ${userId}`);
-
-    const user = await userService.getPublicUserProfile(userId);
-    if (!user) {
-        throw new NotFoundError('User not found');
-    }
-
-    res.status(StatusCodes.OK).json({
-        success: true,
-        data: {
-            user
+        if (!userId) {
+            throw new BadRequestError('User ID is required');
         }
-    });
-};
+
+        logger.info(`Getting public profile for user: ${userId}`);
+
+        const user = await userCacheService.getEntity(
+            `user:public:profile:${userId}`,
+            async () => {
+                return await userService.getPublicUserProfileOptimized(userId);
+            },
+            600 // 10 minutes cache for public profiles
+        );
+
+        if (!user) {
+            throw new NotFoundError('User not found');
+        }
+
+        const cleanedUser = DatabaseOptimizer.cleanResponse(user);
+
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: {
+                user: cleanedUser
+            }
+        });
+    }
+);
 
 /**
  * Get public influencer profile
@@ -170,5 +184,5 @@ module.exports = {
         res.status(StatusCodes.OK).json({ success: true, data: users });
     },
 
-   
+
 };

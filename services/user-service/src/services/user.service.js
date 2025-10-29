@@ -1,6 +1,7 @@
 // src/services/user.service.js
 const { prisma } = require('../config/database');
 const { NotFoundError } = require('../middleware/error-handler');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const logger = require('../utils/logger');
 
 /**
@@ -25,6 +26,27 @@ const getUserById = async (userId) => {
         return user;
     } catch (error) {
         logger.error(`Error getting user by ID: ${userId}`, error);
+        throw error;
+    }
+};
+
+/**
+ * Optimized getUserById with field selection for better performance
+ */
+const getUserByIdOptimized = async (userId, includePrivate = false) => {
+    try {
+        const fields = includePrivate ?
+            DatabaseOptimizer.getOptimizedUserFields(true) :
+            DatabaseOptimizer.getOptimizedUserFields(false);
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: fields
+        });
+
+        return user;
+    } catch (error) {
+        logger.error(`Error getting user by ID optimized: ${userId}`, error);
         throw error;
     }
 };
@@ -101,6 +123,34 @@ const getPublicUserProfile = async (userId) => {
         return publicProfile;
     } catch (error) {
         logger.error(`Error getting public user profile: ${userId}`, error);
+        throw error;
+    }
+};
+
+/**
+ * Optimized public user profile with reduced field selection
+ */
+const getPublicUserProfileOptimized = async (userId) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: DatabaseOptimizer.getPublicUserFields()
+        });
+
+        if (!user) {
+            return null;
+        }
+
+        // Only include contact information if showContact is true
+        const publicProfile = { ...user };
+        if (!user.showContact) {
+            delete publicProfile.email;
+            delete publicProfile.phone;
+        }
+
+        return publicProfile;
+    } catch (error) {
+        logger.error(`Error getting public user profile optimized: ${userId}`, error);
         throw error;
     }
 };
@@ -715,4 +765,8 @@ module.exports = {
             throw error;
         }
     },
+
+    // Add optimized methods
+    getUserByIdOptimized,
+    getPublicUserProfileOptimized,
 };

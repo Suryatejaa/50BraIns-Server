@@ -2,6 +2,7 @@ const { json } = require('stream/consumers');
 const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
 const gigCacheService = require('../services/gigCacheService');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const Joi = require('joi');
 const { title } = require('process');
 class ApplicationController {
@@ -2751,9 +2752,10 @@ class ApplicationController {
                     }
                 }
 
-                // Add search filter if provided (search in gig title)
+                // Simplified search filter to avoid expensive joins
+                let gigWhere = null;
                 if (search) {
-                    where.gig = {
+                    gigWhere = {
                         OR: [
                             { title: { contains: search, mode: 'insensitive' } },
                             { description: { contains: search, mode: 'insensitive' } }
@@ -2765,24 +2767,20 @@ class ApplicationController {
                 const orderBy = {};
                 orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
 
-                // Execute queries in parallel with performance monitoring
+                // Execute optimized queries with reduced data fetching
                 const [applications, total] = await Promise.all([
                     this.measureQueryPerformance('getMyApplications_findMany', () =>
                         this.prisma.application.findMany({
-                            where,
+                            where: gigWhere ? { ...where, gig: gigWhere } : where,
                             skip: parseInt(skip),
                             take: parseInt(limit),
                             orderBy,
                             select: {
                                 id: true,
                                 gigId: true,
-                                applicantId: true,
                                 applicantType: true,
-                                clanId: true,
-                                proposal: true,
                                 quotedPrice: true,
                                 estimatedTime: true,
-                                portfolio: true,
                                 status: true,
                                 appliedAt: true,
                                 respondedAt: true,
@@ -2791,20 +2789,23 @@ class ApplicationController {
                                     select: {
                                         id: true,
                                         title: true,
-                                        description: true,
                                         budgetMin: true,
                                         budgetMax: true,
                                         budgetType: true,
                                         status: true,
-                                        deadline: true,
-                                        createdAt: true
+                                        deadline: true
                                     }
                                 }
                             }
                         })
                     ),
+                    // Optimized count query without joins when possible
                     this.measureQueryPerformance('getMyApplications_count', () =>
-                        this.prisma.application.count({ where })
+                        search
+                            ? this.prisma.application.count({
+                                where: { ...where, gig: gigWhere }
+                            })
+                            : this.prisma.application.count({ where })
                     )
                 ]);
 

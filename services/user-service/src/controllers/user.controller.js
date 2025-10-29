@@ -1,28 +1,42 @@
 // src/controllers/user.controller.js
 const { StatusCodes } = require('http-status-codes');
 const userService = require('../services/user.service');
+const userCacheService = require('../services/userCacheService');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const { BadRequestError, NotFoundError } = require('../middleware/error-handler');
 const logger = require('../utils/logger');
 
 /**
  * Get current user profile
  */
-const getCurrentUser = async (req, res) => {
-    const userId = req.user.id;
-    logger.info(`Getting profile for user: ${userId}`);
+const getCurrentUser = DatabaseOptimizer.withPerformanceMonitoring(
+    'getCurrentUser',
+    async (req, res) => {
+        const userId = req.user.id;
+        logger.info(`Getting profile for user: ${userId}`);
 
-    const user = await userService.getUserById(userId);
-    if (!user) {
-        throw new NotFoundError('User not found');
-    }
+        const user = await userCacheService.getEntity(
+            `user:profile:${userId}`,
+            async () => {
+                return await userService.getUserByIdOptimized(userId, true);
+            },
+            600 // 10 minutes cache
+        );
 
-    res.status(StatusCodes.OK).json({
-        success: true,
-        data: {
-            user
+        if (!user) {
+            throw new NotFoundError('User not found');
         }
-    });
-};
+
+        const cleanedUser = DatabaseOptimizer.cleanResponse(user);
+
+        res.status(StatusCodes.OK).json({
+            success: true,
+            data: {
+                user: cleanedUser
+            }
+        });
+    }
+);
 
 /**
  * Update user profile
@@ -75,31 +89,43 @@ const updateProfilePicture = async (req, res) => {
     });
 };
 
-const getUserById = async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        const user = await userService.getUserById(userId);
-        if (!user) {
-            return res.status(404).json({ success: false, error: 'User not found' });
-        }
+const getUserById = DatabaseOptimizer.withPerformanceMonitoring(
+    'getUserById',
+    async (req, res) => {
+        try {
+            const userId = req.params.userId;
 
-        // Return public fields for external access
-        const publicUser = {
-            id: user.id,
-            username: user.username,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            companyName: user.companyName,
-            profilePicture: user.profilePicture,
-            emailVerified: user.emailVerified,
-            createdAt: user.createdAt
-        };
-        res.status(200).json({ success: true, data: { user: publicUser } });
-    } catch (error) {
-        logger.error('Get user by ID error:', error);
-        res.status(500).json({ success: false, error: 'Internal server error' });
+            const user = await userCacheService.getEntity(
+                `user:public:${userId}`,
+                async () => {
+                    return await userService.getUserByIdOptimized(userId, false);
+                },
+                300 // 5 minutes cache for public profiles
+            );
+
+            if (!user) {
+                return res.status(404).json({ success: false, error: 'User not found' });
+            }
+
+            // Return optimized public fields
+            const publicUser = DatabaseOptimizer.cleanResponse({
+                id: user.id,
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                companyName: user.companyName,
+                profilePicture: user.profilePicture,
+                emailVerified: user.emailVerified,
+                createdAt: user.createdAt
+            });
+
+            res.status(200).json({ success: true, data: { user: publicUser } });
+        } catch (error) {
+            logger.error('Get user by ID error:', error);
+            res.status(500).json({ success: false, error: 'Internal server error' });
+        }
     }
-};
+);
 
 /**
  * Get multiple users by IDs (for internal service calls)

@@ -1,5 +1,7 @@
 // src/controllers/analytics.controller.js
 const analyticsService = require('../services/analytics.service');
+const userCacheService = require('../services/userCacheService');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const logger = require('../utils/logger');
 const { StatusCodes } = require('http-status-codes');
 
@@ -155,43 +157,57 @@ const getUserInsights = async (req, res) => {
 /**
  * Get dashboard analytics for authenticated user
  */
-const getDashboard = async (req, res) => {
-    try {
-        if (!req.user || !req.user.id) {
-            return res.status(StatusCodes.UNAUTHORIZED).json({
+const getDashboard = DatabaseOptimizer.withPerformanceMonitoring(
+    'getDashboard',
+    async (req, res) => {
+        try {
+            if (!req.user || !req.user.id) {
+                return res.status(StatusCodes.UNAUTHORIZED).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            const userId = req.user.id;
+            const cacheKey = `analytics:dashboard:${userId}`;
+
+            const dashboardData = await userCacheService.getEntity(
+                cacheKey,
+                async () => {
+                    // Get user insights and analytics
+                    const insights = await analyticsService.getUserInsights(userId);
+
+                    // Get trending influencers and popular brands for the dashboard
+                    const trending = await analyticsService.getTrendingInfluencers({ limit: 5 });
+                    const popularBrands = await analyticsService.getPopularBrands({ limit: 5 });
+
+                    return {
+                        userInsights: insights,
+                        trending: {
+                            influencers: trending,
+                            brands: popularBrands
+                        },
+                        generatedAt: new Date().toISOString()
+                    };
+                },
+                300 // 5 minutes cache for dashboard data
+            );
+
+            const cleanedData = DatabaseOptimizer.cleanResponse(dashboardData);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                data: cleanedData
+            });
+        } catch (error) {
+            logger.error('Error getting dashboard analytics:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
                 success: false,
-                error: 'Authentication required'
+                error: 'Failed to fetch dashboard analytics'
             });
         }
-
-        const userId = req.user.id;
-
-        // Get user insights and analytics
-        const insights = await analyticsService.getUserInsights(userId);
-
-        // Get trending influencers and popular brands for the dashboard
-        const trending = await analyticsService.getTrendingInfluencers({ limit: 5 });
-        const popularBrands = await analyticsService.getPopularBrands({ limit: 5 });
-
-        res.status(StatusCodes.OK).json({
-            success: true,
-            data: {
-                userInsights: insights,
-                trending: {
-                    influencers: trending,
-                    brands: popularBrands
-                },
-                generatedAt: new Date().toISOString()
-            }
-        });
-    } catch (error) {
-        logger.error('Error getting dashboard analytics:', error);
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            error: 'Failed to fetch dashboard analytics'
-        });
     }
-};
+);
 
 module.exports = {
     getTrendingInfluencers,

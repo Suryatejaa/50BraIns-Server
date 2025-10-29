@@ -1,5 +1,6 @@
 // src/services/search.service.js
 const { prisma } = require('../config/database');
+const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const logger = require('../utils/logger');
 const axios = require('axios');
 
@@ -486,5 +487,95 @@ const searchCrew = async ({
 };
 
 module.exports = {
-    searchUsers
+    searchUsers,
+
+    /**
+     * Optimized search users with better performance
+     */
+    searchUsersOptimized: async ({
+        query,
+        page = 1,
+        limit = 10,
+        sortBy = 'lastActivityAt',
+        sortOrder = 'desc',
+        roles,
+        location,
+        verified,
+        active = true
+    }) => {
+        try {
+            // Optimize pagination
+            const pagination = DatabaseOptimizer.optimizePagination(page, limit, 50);
+
+            const where = {
+                isActive: active === true || active === 'true'
+            };
+
+            // Add roles filter
+            if (roles) {
+                const rolesArray = Array.isArray(roles) ? roles : roles.split(',');
+                where.roles = { hasSome: rolesArray.map(r => r.toUpperCase()) };
+            }
+
+            // Add location filter with optimized search
+            if (location) {
+                where.location = { contains: location, mode: 'insensitive' };
+            }
+
+            // Add verified filter
+            if (verified !== undefined) {
+                where.emailVerified = verified === 'true' || verified === true;
+            }
+
+            // Add optimized search query
+            if (query && query.trim()) {
+                Object.assign(where, DatabaseOptimizer.createSearchWhere(query));
+            }
+
+            // Get optimized ordering
+            const orderBy = DatabaseOptimizer.getOptimizedOrdering(sortBy, sortOrder);
+
+            // Count total with optimized query
+            const total = await prisma.user.count({ where });
+
+            // Get users with optimized field selection
+            const users = await prisma.user.findMany({
+                where,
+                select: DatabaseOptimizer.getSearchFields(),
+                skip: pagination.skip,
+                take: pagination.take,
+                orderBy
+            });
+
+            // Format response with minimal data
+            const formattedUsers = users.map((user, index) => ({
+                rank: pagination.skip + index + 1,
+                id: user.id,
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                companyName: user.companyName,
+                profilePicture: user.profilePicture,
+                roles: user.roles,
+                emailVerified: user.emailVerified
+            }));
+
+            return {
+                users: formattedUsers,
+                total,
+                pagination: {
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total,
+                    totalPages: Math.ceil(total / pagination.limit),
+                    hasNext: pagination.skip + pagination.limit < total,
+                    hasPrev: pagination.page > 1
+                }
+            };
+        } catch (error) {
+            logger.error('Error in optimized user search:', error);
+            throw error;
+        }
+    }
 };

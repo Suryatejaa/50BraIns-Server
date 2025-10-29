@@ -4,6 +4,7 @@
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
+const compression = require('compression');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const { StatusCodes } = require('http-status-codes');
@@ -12,9 +13,10 @@ const logger = require('./utils/logger');
 const { addUserToRequest } = require('./utils/auth');
 const { errorHandler } = require('./middleware/error-handler');
 const { startUserSyncConsumer } = require('./sync/userSync.consumer');
-const rabbitmqService = require('./services/rabbitmqService');  
+const rabbitmqService = require('./services/rabbitmqService');
 const CreditEventConsumer = require('./services/creditEventConsumer');
 const AuthEventConsumer = require('./services/authEventConsumer');
+const userCacheService = require('./services/userCacheService');
 const searchRoutes = require('./routes/search.routes');
 const publicRoutes = require('./routes/public.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
@@ -25,10 +27,71 @@ const userRoutes = require('./routes/user.routes'); // Assuming user routes are 
 
 const app = express();
 const PORT = process.env.PORT || 4002;
+
+// Trust proxy (for production load balancers)
+app.set('trust proxy', 1);
+
+// Security and performance middleware
 app.use(helmet());
+
+// Optimized compression configuration for maximum performance
+app.use(compression({
+    level: 6, // Compression level (1-9, 6 is optimal balance)
+    threshold: 1024, // Only compress responses larger than 1KB
+    filter: (req, res) => {
+        // Compress all responses except if explicitly disabled
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        // Fallback to standard compression filter
+        return compression.filter(req, res);
+    },
+    // Add specific MIME types for better compression
+    chunkSize: 16 * 1024, // 16KB chunks for better streaming
+    windowBits: 15, // Maximum compression window
+    memLevel: 8 // Memory usage level (1-9, 8 is good balance)
+}));
+
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Body parsing middleware with optimization
+app.use(express.json({
+    limit: '10mb',
+    reviver: null // Don't parse dates automatically for performance
+}));
+app.use(express.urlencoded({
+    extended: true,
+    limit: '10mb',
+    parameterLimit: 1000 // Limit number of parameters
+}));
+
+// Response optimization middleware
+app.use((req, res, next) => {
+    // Track request start time for performance monitoring
+    req.startTime = Date.now();
+
+    // Set optimal cache headers for static-like responses
+    if (req.method === 'GET') {
+        res.set({
+            'Cache-Control': 'private, max-age=60', // 1 minute cache for GET requests
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY'
+        });
+    }
+
+    // Optimize JSON responses
+    const originalJson = res.json;
+    res.json = function (data) {
+        // Set appropriate content type and encoding
+        res.set({
+            'Content-Type': 'application/json; charset=utf-8',
+            'X-Response-Time': Date.now() - req.startTime + 'ms'
+        });
+        return originalJson.call(this, data);
+    };
+
+    next();
+});
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 
 // Add user information from gateway headers to req.user
@@ -60,6 +123,14 @@ app.use(errorHandler);
 const server = app.listen(PORT, async () => {
     console.log(`✅ User Service running on port ${PORT}`);
     logger.info(`User Service running on port ${PORT}`);
+
+    // Initialize cache service
+    try {
+        await userCacheService.init();
+        console.log('✅ [User Service] Cache service initialized');
+    } catch (error) {
+        console.error('❌ [User Service] Failed to initialize cache service:', error);
+    }
 
     // Start RabbitMQ consumer for user registration sync
     console.log('36. About to start RabbitMQ consumer...');
