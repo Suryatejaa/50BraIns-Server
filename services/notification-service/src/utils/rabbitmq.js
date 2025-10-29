@@ -134,20 +134,20 @@ class RabbitMQService {
         // All events now use specific routing keys (application_submitted, application_confirmed, etc.)
 
         // Bind to specific Clan Service events
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.created');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.joined');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.left');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.join.request');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.join.request.approved');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.join.request.rejected');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.role.updated');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.removed');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.admin.added');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.admin.removed');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.ownership.transferred');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.message.sent');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.reputation.updated');
-        await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.updated');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.created');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.joined');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.left');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.join.request');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.join.request.approved');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.join.request.rejected');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.role.updated');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.member.removed');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.admin.added');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.admin.removed');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.ownership.transferred');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.message.sent');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.reputation.updated');
+        // await this.channel.bindQueue('notifications.clan.events', 'brains_events', 'clan.updated');
 
         // Bind to specific User/Auth Service events - CONSOLIDATED TO PREVENT DUPLICATES
         // Note: All auth events now only bound to notifications.brains.events to prevent message duplication
@@ -159,12 +159,12 @@ class RabbitMQService {
         // await this.channel.bindQueue('notifications.user.events', 'brains_events', 'user.deactivated'); // REMOVED - already in brains.events
 
         // Bind to Reputation Service events
-        await this.channel.bindQueue('notifications.reputation.events', 'reputation_events', 'gig.completed');
-        await this.channel.bindQueue('notifications.reputation.events', 'reputation_events', 'user.tier.changed');
+        // await this.channel.bindQueue('notifications.reputation.events', 'reputation_events', 'gig.completed');
+        // await this.channel.bindQueue('notifications.reputation.events', 'reputation_events', 'user.tier.changed');
 
-        // Bind to Credit Service events
-        await this.channel.bindQueue('notifications.credit.events', 'credit_events', 'boost_event');
-        await this.channel.bindQueue('notifications.credit.events', 'credit_events', 'credit_event');
+        // // Bind to Credit Service events
+        // await this.channel.bindQueue('notifications.credit.events', 'credit_events', 'boost_event');
+        // await this.channel.bindQueue('notifications.credit.events', 'credit_events', 'credit_event');
 
         logger.info('✅ [Notification Service] Event bindings established');
     }
