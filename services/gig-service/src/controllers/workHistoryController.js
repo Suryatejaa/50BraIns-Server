@@ -105,7 +105,7 @@ exports.getApplicantEarnings = async (req, res) => {
     const cacheKey = gigCacheService.generateKey('applicant_earnings', applicantId);
 
     // Use cache-first approach
-    const earningsData = await gigCacheService.getEntity(cacheKey, async () => {
+    const earningsData = await gigCacheService.getEntity('applicant_earnings', applicantId, async () => {
       // Order WHERE clause for optimal index usage: applicantId (indexed) + paymentStatus (indexed)
       const summary = await measureQueryPerformance('getApplicantEarnings_aggregate', () =>
         prisma.applicationWorkHistory.aggregate({

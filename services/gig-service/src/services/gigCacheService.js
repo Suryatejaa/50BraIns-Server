@@ -3,6 +3,7 @@ const cacheManager = require('./cacheManager');
 class GigCacheService {
     constructor() {
         this.cacheManager = cacheManager;
+        this.isInitialized = false;
     }
 
     // ===================== GIG CACHING =====================
@@ -342,17 +343,72 @@ class GigCacheService {
     }
 
     /**
+     * Get list with fallback (proxy to cacheManager)
+     */
+    async getList(key, fallbackFn, ttl = 600) {
+        if (!this.cacheManager || !this.isInitialized) {
+            console.warn('⚠️ CacheManager not initialized, falling back to direct execution');
+            return await fallbackFn();
+        }
+        try {
+            return await this.cacheManager.getList(key, fallbackFn, ttl);
+        } catch (error) {
+            console.error('❌ Cache getList error:', error.message);
+            return await fallbackFn();
+        }
+    }
+
+    /**
+     * Get entity with fallback (proxy to cacheManager)
+     */
+    async getEntity(type, id, fallbackFn, ttl = 3600) {
+        if (!this.cacheManager || !this.isInitialized) {
+            console.warn('⚠️ CacheManager not initialized, falling back to direct execution');
+            return await fallbackFn();
+        }
+        try {
+            return await this.cacheManager.getEntity(type, id, fallbackFn, ttl);
+        } catch (error) {
+            console.error('❌ Cache getEntity error:', error.message);
+            return await fallbackFn();
+        }
+    }
+
+    /**
+     * Invalidate by pattern (proxy to cacheManager)
+     */
+    async invalidatePattern(pattern) {
+        if (!this.cacheManager || !this.isInitialized) {
+            console.warn('⚠️ CacheManager not initialized, skipping cache invalidation');
+            return;
+        }
+        try {
+            return await this.cacheManager.invalidatePattern(pattern);
+        } catch (error) {
+            console.error('❌ Cache invalidatePattern error:', error.message);
+        }
+    }
+
+    /**
      * Check if caching is enabled
      */
     isEnabled() {
-        return this.cacheManager.isEnabled;
+        return this.cacheManager && this.isInitialized && this.cacheManager.isEnabled;
     }
 
     /**
      * Initialize cache service
      */
     async initialize() {
-        await this.cacheManager.initialize();
+        try {
+            await this.cacheManager.initialize();
+            this.isInitialized = true;
+            console.log('✅ GigCacheService initialized successfully');
+        } catch (error) {
+            console.error('❌ GigCacheService initialization failed:', error.message);
+            this.isInitialized = false;
+            // Don't throw error, allow service to continue without cache
+        }
     }
 
     /**
