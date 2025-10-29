@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const databaseService = require('./services/database');
 const rabbitmqService = require('./services/rabbitmqService');
+const gigCacheService = require('./services/gigCacheService');
 const CreditEventConsumer = require('./services/creditEventConsumer');
 const GigEventConsumer = require('./services/gigEventConsumer');
 
@@ -63,6 +64,27 @@ app.use('/applications', applicationRoutes);
 app.use('/submissions', submissionRoutes);
 app.use('/crew', crewRoutes);
 
+// Cache metrics endpoint
+app.get('/cache/metrics', (req, res) => {
+    const metrics = gigCacheService.getMetrics();
+    res.json({
+        success: true,
+        metrics: {
+            ...metrics,
+            timestamp: new Date().toISOString()
+        }
+    });
+});
+
+// Cache health endpoint
+app.get('/cache/health', async (req, res) => {
+    const health = await gigCacheService.getHealthStatus();
+    res.json({
+        success: true,
+        cache: health
+    });
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({
@@ -102,6 +124,10 @@ const gracefulShutdown = async (signal) => {
         await rabbitmqService.close();
         console.log('RabbitMQ connection closed');
 
+        // Close cache connection
+        await gigCacheService.shutdown();
+        console.log('Cache service shutdown');
+
         // Close database connections
         await databaseService.disconnect();
         console.log('Database connections closed');
@@ -124,6 +150,10 @@ async function startServer() {
         // Initialize database connection
         await databaseService.connect();
         console.log('Database connected successfully');
+
+        // Initialize cache service
+        await gigCacheService.initialize();
+        console.log('Cache service initialized successfully');
 
         // Start HTTP server
         const server = app.listen(PORT, async () => {

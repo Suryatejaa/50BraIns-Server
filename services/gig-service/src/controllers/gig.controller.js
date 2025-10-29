@@ -1,13 +1,32 @@
 const { json } = require('stream/consumers');
 const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
+const gigCacheService = require('../services/gigCacheService');
 const Joi = require('joi');
 const { title } = require('process');
 const { isPromise } = require('util/types');
 class GigController {
     constructor() {
         this.prisma = databaseService.getClient();
+        this.cache = gigCacheService;
     }
+
+    // Helper function for performance monitoring
+    measureQueryPerformance = async (queryName, queryFn) => {
+        const startTime = Date.now();
+        try {
+            const result = await queryFn();
+            const duration = Date.now() - startTime;
+            if (duration > 1000) {
+                console.warn(`Slow query detected - ${queryName}: ${duration}ms`);
+            }
+            return result;
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            console.error(`Query failed - ${queryName}: ${duration}ms`, error.message);
+            throw error;
+        }
+    };
 
     //=================================================================
     //======================== VALIDATION SCHEMAS =========================
@@ -513,6 +532,10 @@ class GigController {
                 }
             });
 
+            // Invalidate user's gig caches and search results
+            await this.cache.invalidateUserGigs(id);
+            await this.cache.clearSearchCaches(); // Clear search results since new gig affects them
+
             // Publish event
             await this.publishEvent('gig_created', {
                 gigId: gig.id,
@@ -657,6 +680,9 @@ class GigController {
                 });
             }
 
+            // Invalidate user's draft caches
+            await this.cache.invalidatePattern(`user_drafts:${id}:*`);
+
             // Publish event for draft saved (optional - for analytics/tracking)
             await this.publishEvent('gig_draft_saved', {
                 gigId: draft.id,
@@ -745,6 +771,10 @@ class GigController {
                 data: { status }
             });
 
+            // Invalidate related caches
+            await this.cache.invalidateGig(gigId, userId);
+            await this.cache.clearSearchCaches();
+
             res.status(200).json({
                 success: true,
                 message: 'Gig status updated successfully',
@@ -805,6 +835,11 @@ class GigController {
                 where: { id: gigId },
                 data: { isPublic }
             });
+
+            // Invalidate related caches
+            await this.cache.invalidateGig(gigId, userId);
+            await this.cache.clearSearchCaches();
+
             res.status(200).json({
                 success: true,
                 message: 'Gig visibility updated successfully',
@@ -841,256 +876,261 @@ class GigController {
                 deadline
             } = req.query;
 
-            const skip = (page - 1) * limit;
+            // Create cache key with all parameters
+            const cacheKey = this.cache.generateKey('public_gigs',
+                `${userId || 'anon'}_${category || 'all'}_${roleRequired || 'all'}_${location || 'all'}_${budgetMin || 'nomin'}_${budgetMax || 'nomax'}_${urgency || 'all'}_${status || 'all'}_${sortBy}_${sortOrder}_${page}_${limit}_${search || 'nosearch'}_${clientScore || 'noscore'}_${deadline || 'nodeadline'}`
+            );
 
-            // Build filter conditions
-            const where = {};
+            // Use cache-first approach
+            const gigsData = await this.cache.getList(cacheKey, async () => {
+                const skip = (page - 1) * limit;
 
-            // Status filter (allow multiple statuses)
-            if (status) {
-                const statusArray = Array.isArray(status) ? status : status.split(',');
-                where.status = statusArray.length === 1 ? statusArray[0] : { in: statusArray };
-            }
+                // Build filter conditions
+                const where = {};
 
-            if (category) {
-                const categoryArray = Array.isArray(category) ? category : category.split(',');
-                where.category = categoryArray.length === 1 ? categoryArray[0] : { in: categoryArray };
-            }
+                // Status filter (allow multiple statuses)
+                if (status) {
+                    const statusArray = Array.isArray(status) ? status : status.split(',');
+                    where.status = statusArray.length === 1 ? statusArray[0] : { in: statusArray };
+                }
 
-            if (roleRequired) {
-                const roleArray = Array.isArray(roleRequired) ? roleRequired : roleRequired.split(',');
-                where.roleRequired = roleArray.length === 1 ? roleArray[0] : { in: roleArray };
-            }
+                if (category) {
+                    const categoryArray = Array.isArray(category) ? category : category.split(',');
+                    where.category = categoryArray.length === 1 ? categoryArray[0] : { in: categoryArray };
+                }
 
-            if (location) {
-                where.location = { contains: location, mode: 'insensitive' };
-            }
+                if (roleRequired) {
+                    const roleArray = Array.isArray(roleRequired) ? roleRequired : roleRequired.split(',');
+                    where.roleRequired = roleArray.length === 1 ? roleArray[0] : { in: roleArray };
+                }
 
-            if (urgency) {
-                const urgencyArray = Array.isArray(urgency) ? urgency : urgency.split(',');
-                where.urgency = urgencyArray.length === 1 ? urgencyArray[0] : { in: urgencyArray };
-            }
+                if (location) {
+                    where.location = { contains: location, mode: 'insensitive' };
+                }
 
-            // Budget range filter
-            if (budgetMin || budgetMax) {
-                where.AND = [
-                    ...(where.AND || []),
-                    {
-                        OR: [
-                            {
-                                AND: [
-                                    budgetMin ? { budgetMax: { gte: parseFloat(budgetMin) } } : {},
-                                    budgetMax ? { budgetMin: { lte: parseFloat(budgetMax) } } : {}
-                                ]
-                            }
-                        ]
+                if (urgency) {
+                    const urgencyArray = Array.isArray(urgency) ? urgency : urgency.split(',');
+                    where.urgency = urgencyArray.length === 1 ? urgencyArray[0] : { in: urgencyArray };
+                }
+
+                // Budget range filter
+                if (budgetMin || budgetMax) {
+                    where.AND = [
+                        ...(where.AND || []),
+                        {
+                            OR: [
+                                {
+                                    AND: [
+                                        budgetMin ? { budgetMax: { gte: parseFloat(budgetMin) } } : {},
+                                        budgetMax ? { budgetMin: { lte: parseFloat(budgetMax) } } : {}
+                                    ]
+                                }
+                            ]
+                        }
+                    ];
+                }
+
+                // Deadline filter
+                if (deadline) {
+                    const now = new Date();
+                    switch (deadline) {
+                        case 'today':
+                            const endOfDay = new Date(now);
+                            endOfDay.setHours(23, 59, 59, 999);
+                            where.deadline = { lte: endOfDay };
+                            break;
+                        case 'week':
+                            const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                            where.deadline = { lte: weekFromNow };
+                            break;
+                        case 'month':
+                            const monthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+                            where.deadline = { lte: monthFromNow };
+                            break;
                     }
-                ];
-            }
+                }
 
-            // Deadline filter
-            if (deadline) {
-                const now = new Date();
-                switch (deadline) {
-                    case 'today':
-                        const endOfDay = new Date(now);
-                        endOfDay.setHours(23, 59, 59, 999);
-                        where.deadline = { lte: endOfDay };
+                // Build order by clause
+                let orderBy = [];
+
+                switch (sortBy) {
+                    case 'budget':
+                        orderBy.push({ budgetMax: sortOrder });
                         break;
-                    case 'week':
-                        const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-                        where.deadline = { lte: weekFromNow };
+                    case 'applications':
+                        // This will be handled after fetching data
+                        orderBy.push({ createdAt: sortOrder });
                         break;
-                    case 'month':
-                        const monthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-                        where.deadline = { lte: monthFromNow };
+                    case 'urgency':
+                        // Custom urgency order: urgent > normal > flexible
+                        if (sortOrder === 'desc') {
+                            orderBy.push({ urgency: 'asc' }); // urgent comes first
+                        } else {
+                            orderBy.push({ urgency: 'desc' }); // flexible comes first
+                        }
+                        orderBy.push({ createdAt: 'desc' });
+                        break;
+                    case 'relevance':
+                        // Relevance based on urgency + recent creation
+                        orderBy.push({ urgency: 'asc' });
+                        orderBy.push({ createdAt: 'desc' });
+                        break;
+                    case 'date':
+                    default:
+                        orderBy.push({ createdAt: sortOrder });
                         break;
                 }
-            }
 
-            // Build order by clause
-            let orderBy = [];
+                // Combine privacy and search filters properly
+                const privacyConditions = [];
+                const searchConditions = [];
+                const allConditions = [];
 
-            switch (sortBy) {
-                case 'budget':
-                    orderBy.push({ budgetMax: sortOrder });
-                    break;
-                case 'applications':
-                    // This will be handled after fetching data
-                    orderBy.push({ createdAt: sortOrder });
-                    break;
-                case 'urgency':
-                    // Custom urgency order: urgent > normal > flexible
-                    if (sortOrder === 'desc') {
-                        orderBy.push({ urgency: 'asc' }); // urgent comes first
-                    } else {
-                        orderBy.push({ urgency: 'desc' }); // flexible comes first
-                    }
-                    orderBy.push({ createdAt: 'desc' });
-                    break;
-                case 'relevance':
-                    // Relevance based on urgency + recent creation
-                    orderBy.push({ urgency: 'asc' });
-                    orderBy.push({ createdAt: 'desc' });
-                    break;
-                case 'date':
-                default:
-                    orderBy.push({ createdAt: sortOrder });
-                    break;
-            }
-
-            // Combine privacy and search filters properly
-            const privacyConditions = [];
-            const searchConditions = [];
-            const allConditions = [];
-
-            // Add privacy conditions
-            if (!userId) {
-                // Unauthenticated users can only see public gigs
-                privacyConditions.push({ isPublic: true });
-            } else {
-                // Authenticated users can see:
-                // 1. All public gigs OR
-                // 2. Private gigs they own OR  
-                // 3. Private gigs they have applied to
-                privacyConditions.push(
-                    { isPublic: true },
-                    { postedById: userId },
-                    {
-                        AND: [
-                            { isPublic: false },
-                            {
-                                applications: {
-                                    some: {
-                                        applicantId: userId,
-                                        status: { not: 'WITHDRAWN' }
+                // Add privacy conditions
+                if (!userId) {
+                    // Unauthenticated users can only see public gigs
+                    privacyConditions.push({ isPublic: true });
+                } else {
+                    // Authenticated users can see:
+                    // 1. All public gigs OR
+                    // 2. Private gigs they own OR  
+                    // 3. Private gigs they have applied to
+                    privacyConditions.push(
+                        { isPublic: true },
+                        { postedById: userId },
+                        {
+                            AND: [
+                                { isPublic: false },
+                                {
+                                    applications: {
+                                        some: {
+                                            applicantId: userId,
+                                            status: { not: 'WITHDRAWN' }
+                                        }
                                     }
                                 }
-                            }
+                            ]
+                        }
+                    );
+                }
+
+                // Add search conditions if search is provided
+                allConditions.push({ OR: privacyConditions });
+
+                // Add search conditions if present
+                if (search) {
+                    allConditions.push({
+                        OR: [
+                            { title: { contains: search, mode: 'insensitive' } },
+                            { description: { contains: search, mode: 'insensitive' } },
+                            { skillsRequired: { has: search } },
+                            { category: { contains: search, mode: 'insensitive' } }
                         ]
-                    }
-                );
-            }
+                    });
+                }
+                // Combine with existing AND conditions (like budget filters)
+                if (where.AND && where.AND.length > 0) {
+                    allConditions.push(...where.AND);
+                }
 
-            // Add search conditions if search is provided
-            allConditions.push({ OR: privacyConditions });
+                // Set final where condition
+                where.AND = allConditions;
 
-            // Add search conditions if present
-            if (search) {
-                allConditions.push({
-                    OR: [
-                        { title: { contains: search, mode: 'insensitive' } },
-                        { description: { contains: search, mode: 'insensitive' } },
-                        { skillsRequired: { has: search } },
-                        { category: { contains: search, mode: 'insensitive' } }
-                    ]
-                });
-            }
-            // Combine with existing AND conditions (like budget filters)
-            if (where.AND && where.AND.length > 0) {
-                allConditions.push(...where.AND);
-            }
-
-            // Set final where condition
-            where.AND = allConditions;
-
-            const [gigs, total] = await Promise.all([
-                this.prisma.gig.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy,
-                    select: {
-                        id: true,
-                        title: true,
-                        description: true,
-                        budgetMin: true,
-                        budgetMax: true,
-                        budgetType: true,
-                        roleRequired: true,
-                        skillsRequired: true,
-                        isClanAllowed: true,
-                        location: true,
-                        duration: true,
-                        urgency: true,
-                        category: true,
-                        deliverables: true,
-                        requirements: true,
-                        deadline: true,
-                        status: true,
-                        postedById: true,
-                        postedByType: true,
-                        brandName: true,
-                        brandUsername: true,
-                        brandAvatar: true,
-                        brandVerified: true,
-                        createdAt: true,
-                        updatedAt: true,
-                        isPublic: true,
-                        _count: {
-                            select: {
-                                applications: true,
-                                submissions: true
+                const [gigs, total] = await Promise.all([
+                    this.prisma.gig.findMany({
+                        where,
+                        skip: parseInt(skip),
+                        take: parseInt(limit),
+                        orderBy,
+                        select: {
+                            id: true,
+                            title: true,
+                            description: true,
+                            budgetMin: true,
+                            budgetMax: true,
+                            budgetType: true,
+                            roleRequired: true,
+                            skillsRequired: true,
+                            isClanAllowed: true,
+                            location: true,
+                            duration: true,
+                            urgency: true,
+                            category: true,
+                            deliverables: true,
+                            requirements: true,
+                            deadline: true,
+                            status: true,
+                            postedById: true,
+                            postedByType: true,
+                            brandName: true,
+                            brandUsername: true,
+                            brandAvatar: true,
+                            brandVerified: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            isPublic: true,
+                            _count: {
+                                select: {
+                                    applications: true,
+                                    submissions: true
+                                }
                             }
                         }
-                    }
-                }),
-                this.prisma.gig.count({ where })
-            ]);
+                    }),
+                    this.prisma.gig.count({ where })
+                ]);
 
-            // If sorting by applications, sort the results
-            if (sortBy === 'applications') {
-                gigs.sort((a, b) => {
-                    const countA = a._count.applications;
-                    const countB = b._count.applications;
-                    return sortOrder === 'desc' ? countB - countA : countA - countB;
-                });
-            }
-
-            // Format response with additional metadata using stored brand info
-            const formattedGigs = gigs.map(gig => ({
-                id: gig.id,
-                title: gig.title,
-                description: gig.description,
-                budgetMin: gig.budgetMin,
-                budgetMax: gig.budgetMax,
-                budgetType: gig.budgetType,
-                roleRequired: gig.roleRequired,
-                skillsRequired: gig.skillsRequired,
-                isClanAllowed: gig.isClanAllowed,
-                location: gig.location,
-                duration: gig.duration,
-                urgency: gig.urgency,
-                category: gig.category,
-                isPublic: gig.isPublic,
-                deliverables: gig.deliverables,
-                requirements: gig.requirements,
-                deadline: gig.deadline,
-                status: gig.status,
-                postedById: gig.postedById,
-                postedByType: gig.postedByType,
-                createdAt: gig.createdAt,
-                updatedAt: gig.updatedAt,
-                // Brand info from stored data (no API calls needed)
-                brand: {
-                    id: gig.postedById,
-                    name: gig.brandName || `User ${gig.postedById.slice(-4)}`,
-                    username: gig.brandUsername,
-                    logo: gig.brandAvatar,
-                    verified: gig.brandVerified
-                },
-                stats: {
-                    applicationsCount: gig._count.applications,
-                    submissionsCount: gig._count.submissions,
-                    daysOld: Math.floor((new Date() - new Date(gig.createdAt)) / (1000 * 60 * 60 * 24)),
-                    daysUntilDeadline: gig.deadline ?
-                        Math.ceil((new Date(gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
+                // If sorting by applications, sort the results
+                if (sortBy === 'applications') {
+                    gigs.sort((a, b) => {
+                        const countA = a._count.applications;
+                        const countB = b._count.applications;
+                        return sortOrder === 'desc' ? countB - countA : countA - countB;
+                    });
                 }
-            }));
 
-            res.json({
-                success: true,
-                data: {
+                // Format response with additional metadata using stored brand info
+                const formattedGigs = gigs.map(gig => ({
+                    id: gig.id,
+                    title: gig.title,
+                    description: gig.description,
+                    budgetMin: gig.budgetMin,
+                    budgetMax: gig.budgetMax,
+                    budgetType: gig.budgetType,
+                    roleRequired: gig.roleRequired,
+                    skillsRequired: gig.skillsRequired,
+                    isClanAllowed: gig.isClanAllowed,
+                    location: gig.location,
+                    duration: gig.duration,
+                    urgency: gig.urgency,
+                    category: gig.category,
+                    isPublic: gig.isPublic,
+                    deliverables: gig.deliverables,
+                    requirements: gig.requirements,
+                    deadline: gig.deadline,
+                    status: gig.status,
+                    postedById: gig.postedById,
+                    postedByType: gig.postedByType,
+                    createdAt: gig.createdAt,
+                    updatedAt: gig.updatedAt,
+                    // Brand info from stored data (no API calls needed)
+                    brand: {
+                        id: gig.postedById,
+                        name: gig.brandName || `User ${gig.postedById.slice(-4)}`,
+                        username: gig.brandUsername,
+                        logo: gig.brandAvatar,
+                        verified: gig.brandVerified
+                    },
+                    stats: {
+                        applicationsCount: gig._count.applications,
+                        submissionsCount: gig._count.submissions,
+                        daysOld: Math.floor((new Date() - new Date(gig.createdAt)) / (1000 * 60 * 60 * 24)),
+                        daysUntilDeadline: gig.deadline ?
+                            Math.ceil((new Date(gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
+                    }
+                }));
+
+                return {
                     gigs: formattedGigs,
                     pagination: {
                         page: parseInt(page),
@@ -1113,7 +1153,12 @@ class GigController {
                         search,
                         deadline
                     }
-                }
+                };
+            }, 180); // 3 minute TTL for public gigs
+
+            res.json({
+                success: true,
+                data: gigsData
             });
         } catch (error) {
             console.error('Error fetching gigs:', error);
@@ -1130,59 +1175,33 @@ class GigController {
             const { id } = req.params;
             const userId = req.headers['x-user-id'] || req.user?.id;
 
-            // Fetch gig to check visibility
-            const gigCheck = await this.prisma.gig.findUnique({
-                where: { id },
-                select: {
-                    isPublic: true,
-                    postedById: true,
-                    applications: {
-                        where: {
-                            applicantId: userId,
-                            status: { not: 'WITHDRAWN' }
-                        },
-                        select: { id: true }
-                    }
-                }
-            });
-
-            // Check if user can view this gig:
-            // 1. Gig is public, OR
-            // 2. User is the owner, OR
-            // 3. User has an active application for this private gig
-            const canView = gigCheck?.isPublic ||
-                gigCheck?.postedById === userId ||
-                (gigCheck?.applications && gigCheck.applications.length > 0);
-
-            if (!canView) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'You do not have permission to view this gig'
+            // Use cache-first approach for gig data
+            const gig = await this.cache.getGig(id, async () => {
+                return await this.measureQueryPerformance('getGigById', async () => {
+                    return await this.prisma.gig.findUnique({
+                        where: { id },
+                        include: {
+                            applications: {
+                                select: {
+                                    id: true,
+                                    applicantId: true,
+                                    applicantType: true,
+                                    proposal: true,
+                                    quotedPrice: true,
+                                    estimatedTime: true,
+                                    status: true,
+                                    appliedAt: true
+                                }
+                            },
+                            _count: {
+                                select: {
+                                    applications: true,
+                                    submissions: true
+                                }
+                            }
+                        }
+                    });
                 });
-            }
-
-            const gig = await this.prisma.gig.findUnique({
-                where: { id },
-                include: {
-                    applications: {
-                        select: {
-                            id: true,
-                            applicantId: true,
-                            applicantType: true,
-                            proposal: true,
-                            quotedPrice: true,
-                            estimatedTime: true,
-                            status: true,
-                            appliedAt: true
-                        }
-                    },
-                    _count: {
-                        select: {
-                            applications: true,
-                            submissions: true
-                        }
-                    }
-                }
             });
 
             if (!gig) {
@@ -1192,10 +1211,32 @@ class GigController {
                 });
             }
 
-            // Check if current user has applied
-            const isApplied = userId ? gig.applications.some(app =>
+            // Check if user can view this gig:
+            // 1. Gig is public, OR
+            // 2. User is the owner, OR
+            // 3. User has an active application for this private gig
+            const userApplication = userId ? gig.applications.find(app =>
                 app.applicantId === userId && app.status !== 'WITHDRAWN'
-            ) : false;
+            ) : null;
+
+            const canView = gig.isPublic ||
+                gig.postedById === userId ||
+                userApplication !== undefined;
+
+            if (!canView) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to view this gig'
+                });
+            }
+
+            // Cache recently viewed for user
+            if (userId && userId !== gig.postedById) {
+                await this.cache.cacheRecentlyViewed(userId, id);
+            }
+
+            // Check if current user has applied
+            const isApplied = userApplication !== undefined;
 
             // Format the response to match frontend expectations
             const formattedGig = {
@@ -1303,59 +1344,65 @@ class GigController {
 
             const skip = (page - 1) * limit;
 
-            // Build where conditions
-            const where = {
-                postedById: id,
-                status: 'DRAFT'
-            };
+            const cacheKey = this.cache.generateKey('user_drafts', id, `${page}_${limit}_${sortBy}_${sort}_${search || ''}_${category || ''}`);
 
-            // Add search filter if provided
-            if (search) {
-                where.OR = [
-                    { title: { contains: search, mode: 'insensitive' } },
-                    { description: { contains: search, mode: 'insensitive' } },
-                    { category: { contains: search, mode: 'insensitive' } }
-                ];
-            }
+            // Use cache-first approach for drafts
+            const draftsData = await this.cache.getList(cacheKey, async () => {
+                // Build where conditions with indexed fields first
+                const where = {
+                    status: 'DRAFT',     // Use indexed status field first
+                    postedById: id       // Then use indexed postedById
+                };
 
-            // Add category filter if provided
-            if (category) {
-                where.category = { contains: category, mode: 'insensitive' };
-            }
+                // Add search filter if provided
+                if (search) {
+                    where.OR = [
+                        { title: { contains: search, mode: 'insensitive' } },
+                        { description: { contains: search, mode: 'insensitive' } },
+                        { category: { contains: search, mode: 'insensitive' } }
+                    ];
+                }
 
-            // Build orderBy
-            const orderBy = {};
-            orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
+                // Add category filter if provided
+                if (category) {
+                    where.category = { contains: category, mode: 'insensitive' };
+                }
 
-            // Execute queries
-            const [drafts, total] = await Promise.all([
-                this.prisma.gig.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy,
-                    select: {
-                        id: true,
-                        title: true,
-                        description: true,
-                        category: true,
-                        roleRequired: true,
-                        budgetMin: true,
-                        budgetMax: true,
-                        budgetType: true,
-                        location: true,
-                        urgency: true,
-                        deadline: true,
-                        createdAt: true,
-                        updatedAt: true
-                    }
-                }),
-                this.prisma.gig.count({ where })
-            ]);
+                // Build orderBy
+                const orderBy = {};
+                orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
 
-            res.json({
-                success: true,
-                data: {
+                // Execute queries in parallel with performance monitoring
+                const [drafts, total] = await Promise.all([
+                    this.measureQueryPerformance('getMyDrafts_findMany', () =>
+                        this.prisma.gig.findMany({
+                            where,
+                            skip: parseInt(skip),
+                            take: parseInt(limit),
+                            orderBy,
+                            select: {
+                                id: true,
+                                title: true,
+                                description: true,
+                                category: true,
+                                roleRequired: true,
+                                budgetMin: true,
+                                budgetMax: true,
+                                budgetType: true,
+                                location: true,
+                                urgency: true,
+                                deadline: true,
+                                createdAt: true,
+                                updatedAt: true
+                            }
+                        })
+                    ),
+                    this.measureQueryPerformance('getMyDrafts_count', () =>
+                        this.prisma.gig.count({ where })
+                    )
+                ]);
+
+                return {
                     drafts,
                     pagination: {
                         page: parseInt(page),
@@ -1365,7 +1412,12 @@ class GigController {
                         hasNext: skip + parseInt(limit) < total,
                         hasPrev: parseInt(page) > 1
                     }
-                }
+                };
+            }, 300); // 5 minute TTL for drafts
+
+            res.json({
+                success: true,
+                data: draftsData
             });
         } catch (error) {
             console.error('Error fetching drafts:', error);
@@ -1376,183 +1428,7 @@ class GigController {
         }
     };
 
-    // GET /my-posted-gigs - Get user's posted gigs
-    getMyPostedGigs = async (req, res) => {
-        try {
-            const id = req.headers['x-user-id'] || req.user?.id;
 
-            if (!id) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'User ID not found in request'
-                });
-            }
-
-            // Extract query parameters with defaults
-            const {
-                page = 1,
-                limit = 20,
-                status,
-                sortBy = 'createdAt',
-                sort = 'desc',
-                search,
-                category,
-                urgency
-            } = req.query;
-
-            const skip = (page - 1) * limit;
-
-            // Build where conditions - only gigs posted by the current user
-            const where = {
-                postedById: id
-            };
-
-            // Add status filter if provided
-            if (status) {
-                if (Array.isArray(status)) {
-                    where.status = { in: status };
-                } else {
-                    where.status = status;
-                }
-            }
-
-            // Add search filter if provided
-            if (search) {
-                where.OR = [
-                    { title: { contains: search, mode: 'insensitive' } },
-                    { description: { contains: search, mode: 'insensitive' } },
-                    { category: { contains: search, mode: 'insensitive' } }
-                ];
-            }
-
-            // Add category filter if provided
-            if (category) {
-                if (Array.isArray(category)) {
-                    where.category = { in: category };
-                } else {
-                    where.category = { contains: category, mode: 'insensitive' };
-                }
-            }
-
-            // Add urgency filter if provided
-            if (urgency) {
-                if (Array.isArray(urgency)) {
-                    where.urgency = { in: urgency };
-                } else {
-                    where.urgency = urgency;
-                }
-            }
-
-            // Build orderBy
-            const orderBy = {};
-            orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
-
-            // Execute queries
-            const [gigs, total] = await Promise.all([
-                this.prisma.gig.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy,
-                    include: {
-                        _count: {
-                            select: {
-                                applications: true,
-                                submissions: true
-                            }
-                        },
-                        applications: {
-
-                            select: {
-                                id: true,
-                                status: true
-                            }
-                        }
-                    }
-                }),
-                this.prisma.gig.count({ where })
-            ]);
-
-            // Enhance gigs with pending applications count
-            console.log('gigs', gigs.map(gig => (gig.id, gig.applications)));
-            const enhancedGigs = gigs.map(gig => ({
-                ...gig,
-                pendingApplicationsCount: gig.applications ? gig.applications.filter(app => app.status === 'PENDING').length : 0
-            }));
-
-            // Get total pending applications count across ALL gigs (irrespective of limit)
-            const totalPendingApplicationsAcrossAllGigs = await this.prisma.application.count({
-                where: {
-                    gig: {
-                        postedById: id
-                    },
-                    status: 'PENDING'
-                }
-            });
-
-            // Get total active gigs count (OPEN or ASSIGNED status) - irrespective of limit
-            const totalActiveGigs = await this.prisma.gig.count({
-                where: {
-                    postedById: id,
-                    status: { in: ['OPEN', 'ASSIGNED'] }
-                }
-            });
-
-            // Get total completed gigs count - irrespective of limit
-            const totalCompletedGigs = await this.prisma.gig.count({
-                where: {
-                    postedById: id,
-                    status: 'COMPLETED'
-                }
-            });
-
-            // Get total budget across all gigs - irrespective of limit
-            const totalBudgetResult = await this.prisma.gig.aggregate({
-                where: {
-                    postedById: id
-                },
-                _sum: {
-                    budgetMax: true
-                }
-            });
-
-            const totalBudget = totalBudgetResult._sum.budgetMax || 0;
-
-            // Calculate total pending applications for current page gigs
-            const totalPendingApplicationsCurrentPage = enhancedGigs.reduce((total, gig) => total + gig.pendingApplicationsCount, 0);
-
-            res.json({
-                success: true,
-                data: {
-                    gigs: enhancedGigs,
-                    summary: {
-                        totalGigs: total,
-                        totalActiveGigs: totalActiveGigs,
-                        totalCompletedGigs: totalCompletedGigs,
-                        totalBudget: totalBudget,
-                        totalGigsOnCurrentPage: enhancedGigs.length,
-                        totalPendingApplicationsCurrentPage: totalPendingApplicationsCurrentPage,
-                        totalPendingApplicationsAcrossAllGigs: totalPendingApplicationsAcrossAllGigs,
-                        gigsWithPendingApplications: enhancedGigs.filter(gig => gig.pendingApplicationsCount > 0).length
-                    },
-                    pagination: {
-                        page: parseInt(page),
-                        limit: parseInt(limit),
-                        total,
-                        totalPages: Math.ceil(total / limit),
-                        hasNext: skip + parseInt(limit) < total,
-                        hasPrev: parseInt(page) > 1
-                    }
-                }
-            });
-        } catch (error) {
-            console.error('Error fetching posted gigs:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to fetch posted gigs'
-            });
-        }
-    };
 }
 
 module.exports = new GigController();

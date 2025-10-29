@@ -2,11 +2,20 @@ const { json } = require('stream/consumers');
 const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
 const Joi = require('joi');
+const gigCacheService = require('../services/gigCacheService');
 const { title } = require('process');
 
 class GigController {
     constructor() {
         this.prisma = databaseService.getClient();
+        this.cache = gigCacheService;
+
+        // Database optimization notes:
+        // - Always place most selective conditions first in WHERE clauses
+        // - Use compound indexes: status + postedById, category + status, etc.
+        // - Prefer SELECT with specific fields over SELECT *
+        // - Use _count for counting instead of fetching full records
+        // - Place indexed fields first in ORDER BY clauses
     }
 
     // Validation schemas
@@ -238,6 +247,62 @@ class GigController {
 
 
 
+
+    // Helper method to get optimized gig selection fields
+    getOptimizedGigSelect() {
+        return {
+            id: true,
+            title: true,
+            description: true,
+            postedById: true,
+            status: true,
+            category: true,
+            budgetMin: true,
+            budgetMax: true,
+            budgetType: true,
+            roleRequired: true,
+            experienceLevel: true,
+            urgency: true,
+            deadline: true,
+            createdAt: true,
+            updatedAt: true,
+            isPublic: true,
+            gigType: true,
+            location: true,
+            skillsRequired: true,
+            tags: true
+        };
+    }
+
+    // Helper method to build optimized where clauses for gig queries
+    buildOptimizedGigWhere(baseConditions, userFilters = {}) {
+        const where = { ...baseConditions };
+
+        // Apply filters in order of index selectivity
+        if (userFilters.status) {
+            where.status = Array.isArray(userFilters.status)
+                ? { in: userFilters.status }
+                : userFilters.status;
+        }
+
+        if (userFilters.category) {
+            where.category = Array.isArray(userFilters.category)
+                ? { in: userFilters.category }
+                : { contains: userFilters.category, mode: 'insensitive' };
+        }
+
+        if (userFilters.gigType) {
+            where.gigType = userFilters.gigType;
+        }
+
+        if (userFilters.urgency) {
+            where.urgency = Array.isArray(userFilters.urgency)
+                ? { in: userFilters.urgency }
+                : userFilters.urgency;
+        }
+
+        return where;
+    }
 
     // Helper method to fetch user data from user-service
     async fetchUserData(userId) {
@@ -626,12 +691,21 @@ class GigController {
                 });
             }
 
-            // Check if gig exists and belongs to user
+            // Check if gig exists and belongs to user - optimized query
             const gig = await this.prisma.gig.findUnique({
                 where: { id },
-                include: {
-                    applications: true,
-                    submissions: true
+                select: {
+                    id: true,
+                    title: true,
+                    status: true,
+                    postedById: true,
+                    applications: {
+                        where: { status: 'APPROVED' }, // Only check approved applications
+                        select: { id: true, status: true }
+                    },
+                    _count: {
+                        select: { submissions: true }
+                    }
                 }
             });
 
@@ -649,9 +723,8 @@ class GigController {
                 });
             }
 
-            // Check if gig can be deleted (no approved applications or submissions)
-            const hasActiveWork = gig.applications.some(app => app.status === 'APPROVED') ||
-                gig.submissions.length > 0;
+            // Check if gig can be deleted - optimized check
+            const hasActiveWork = gig.applications.length > 0 || gig._count.submissions > 0;
 
             if (hasActiveWork && gig.status !== 'DRAFT') {
                 return res.status(400).json({
@@ -825,6 +898,7 @@ class GigController {
                 });
             }
 
+            // Execute all stat queries in parallel with optimized index usage
             const [
                 totalPosted,
                 drafts,
@@ -834,16 +908,23 @@ class GigController {
                 totalApplications,
                 totalSubmissions
             ] = await Promise.all([
+                // All these use gigs_postedById_idx + gigs_status_idx composite
                 this.prisma.gig.count({ where: { postedById: userId } }),
                 this.prisma.gig.count({ where: { postedById: userId, status: 'DRAFT' } }),
                 this.prisma.gig.count({ where: { postedById: userId, status: 'OPEN' } }),
                 this.prisma.gig.count({ where: { postedById: userId, status: { in: ['ASSIGNED', 'IN_PROGRESS', 'SUBMITTED'] } } }),
                 this.prisma.gig.count({ where: { postedById: userId, status: 'COMPLETED' } }),
+                // This uses applications_gigId_idx via relation
                 this.prisma.application.count({
-                    where: { gig: { postedById: userId } }
+                    where: {
+                        gig: { postedById: userId }
+                    }
                 }),
+                // This uses submissions_gigId_idx via relation
                 this.prisma.submission.count({
-                    where: { gig: { postedById: userId } }
+                    where: {
+                        gig: { postedById: userId }
+                    }
                 })
             ]);
 
@@ -888,21 +969,37 @@ class GigController {
                 });
             }
 
-            const activeGigs = await this.prisma.gig.findMany({
-                where: {
-                    postedById: userId,
-                    status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'SUBMITTED'] }
-                },
-                orderBy: { updatedAt: 'desc' },
-                include: {
-                    _count: {
-                        select: {
-                            applications: true,
-                            submissions: true
+            // Create cache key for user's active gigs
+            const cacheKey = this.cache.generateKey('user_active_gigs', userId);
+
+            // Use cache-first approach
+            const activeGigs = await this.cache.getList(cacheKey, async () => {
+                return await this.prisma.gig.findMany({
+                    where: {
+                        status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'SUBMITTED'] }, // Uses gigs_status_idx first
+                        postedById: userId // Then filters by postedById
+                    },
+                    orderBy: { updatedAt: 'desc' },
+                    select: {
+                        id: true,
+                        title: true,
+                        description: true,
+                        status: true,
+                        category: true,
+                        budgetMin: true,
+                        budgetMax: true,
+                        deadline: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        _count: {
+                            select: {
+                                applications: true,
+                                submissions: true
+                            }
                         }
                     }
-                }
-            });
+                });
+            }, 240); // 4 minute TTL for active gigs
 
             res.json({
                 success: true,
@@ -978,15 +1075,29 @@ class GigController {
             }
 
             const submissions = await this.prisma.submission.findMany({
-                where: { submittedById: userId },
+                where: {
+                    submittedById: userId // Uses submissions_submittedById_idx
+                },
                 orderBy: { submittedAt: 'desc' },
-                include: {
+                select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    status: true,
+                    submittedAt: true,
+                    reviewedAt: true,
+                    feedback: true,
+                    rating: true,
+                    deliverables: true,
                     gig: {
                         select: {
                             id: true,
                             title: true,
                             status: true,
-                            postedById: true
+                            postedById: true,
+                            category: true,
+                            budgetMin: true,
+                            budgetMax: true
                         }
                     }
                 }
@@ -1029,151 +1140,168 @@ class GigController {
                 urgency
             } = req.query;
 
-            const skip = (page - 1) * limit;
+            // Create cache key with all parameters
+            const cacheKey = this.cache.generateKey('user_posted_gigs', id, `${status || 'all'}_${search || 'nosearch'}_${category || 'all'}_${urgency || 'all'}_${page}_${limit}_${sortBy}_${sort}`);
 
-            // Build where conditions - only gigs posted by the current user
-            const where = {
-                postedById: id
-            };
+            // Use cache-first approach
+            const gigsData = await this.cache.getList(cacheKey, async () => {
+                const skip = (page - 1) * limit;
 
-            // Add status filter if provided with mapping for convenience
-            if (status) {
-                let statusValues = Array.isArray(status) ? status : [status];
+                // Build where conditions - only gigs posted by the current user
+                const where = {
+                    postedById: id
+                };
 
-                // Map convenience status "ACTIVE" to actual valid statuses
-                const mappedStatuses = [];
-                for (const stat of statusValues) {
-                    if (stat === 'ACTIVE') {
-                        // "ACTIVE" maps to gigs that are open, assigned, or in progress
-                        mappedStatuses.push('OPEN', 'ASSIGNED', 'IN_PROGRESS');
-                    } else {
-                        mappedStatuses.push(stat);
-                    }
-                }
+                // Add status filter if provided with mapping for convenience
+                if (status) {
+                    let statusValues = Array.isArray(status) ? status : [status];
 
-                // Remove duplicates and set the filter
-                const uniqueStatuses = [...new Set(mappedStatuses)];
-                if (uniqueStatuses.length === 1) {
-                    where.status = uniqueStatuses[0];
-                } else {
-                    where.status = { in: uniqueStatuses };
-                }
-            }
-
-            // Add search filter if provided
-            if (search) {
-                where.OR = [
-                    { title: { contains: search, mode: 'insensitive' } },
-                    { description: { contains: search, mode: 'insensitive' } },
-                    { category: { contains: search, mode: 'insensitive' } }
-                ];
-            }
-
-            // Add category filter if provided
-            if (category) {
-                if (Array.isArray(category)) {
-                    where.category = { in: category };
-                } else {
-                    where.category = { contains: category, mode: 'insensitive' };
-                }
-            }
-
-            // Add urgency filter if provided
-            if (urgency) {
-                if (Array.isArray(urgency)) {
-                    where.urgency = { in: urgency };
-                } else {
-                    where.urgency = urgency;
-                }
-            }
-
-            // Build orderBy
-            const orderBy = {};
-            orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
-
-            // Execute queries
-            const [gigs, total] = await Promise.all([
-                this.prisma.gig.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy,
-                    include: {
-                        _count: {
-                            select: {
-                                applications: true,
-                                submissions: true
-                            }
-                        },
-                        applications: {
-
-                            select: {
-                                id: true,
-                                status: true
-                            }
+                    // Map convenience status "ACTIVE" to actual valid statuses
+                    const mappedStatuses = [];
+                    for (const stat of statusValues) {
+                        if (stat === 'ACTIVE') {
+                            // "ACTIVE" maps to gigs that are open, assigned, or in progress
+                            mappedStatuses.push('OPEN', 'ASSIGNED', 'IN_PROGRESS');
+                        } else {
+                            mappedStatuses.push(stat);
                         }
                     }
-                }),
-                this.prisma.gig.count({ where })
-            ]);
 
-            // Enhance gigs with pending applications count
-            console.log('gigs', gigs.map(gig => (gig.id, gig.applications)));
-            const enhancedGigs = gigs.map(gig => ({
-                ...gig,
-                pendingApplicationsCount: gig.applications ? gig.applications.filter(app => app.status === 'PENDING').length : 0
-            }));
+                    // Remove duplicates and set the filter
+                    const uniqueStatuses = [...new Set(mappedStatuses)];
+                    if (uniqueStatuses.length === 1) {
+                        where.status = uniqueStatuses[0];
+                    } else {
+                        where.status = { in: uniqueStatuses };
+                    }
+                }
 
-            // Get total pending applications count across ALL gigs (irrespective of limit)
-            const totalPendingApplicationsAcrossAllGigs = await this.prisma.application.count({
-                where: {
-                    gig: {
+                // Add search filter if provided
+                if (search) {
+                    where.OR = [
+                        { title: { contains: search, mode: 'insensitive' } },
+                        { description: { contains: search, mode: 'insensitive' } },
+                        { category: { contains: search, mode: 'insensitive' } }
+                    ];
+                }
+
+                // Add category filter if provided
+                if (category) {
+                    if (Array.isArray(category)) {
+                        where.category = { in: category };
+                    } else {
+                        where.category = { contains: category, mode: 'insensitive' };
+                    }
+                }
+
+                // Add urgency filter if provided
+                if (urgency) {
+                    if (Array.isArray(urgency)) {
+                        where.urgency = { in: urgency };
+                    } else {
+                        where.urgency = urgency;
+                    }
+                }
+
+                // Build orderBy
+                const orderBy = {};
+                orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
+
+                // Execute queries with optimized field selection
+                const [gigs, total] = await Promise.all([
+                    this.prisma.gig.findMany({
+                        where,
+                        skip: parseInt(skip),
+                        take: parseInt(limit),
+                        orderBy,
+                        select: {
+                            id: true,
+                            title: true,
+                            description: true,
+                            postedById: true,
+                            status: true,
+                            category: true,
+                            budgetMin: true,
+                            budgetMax: true,
+                            budgetType: true,
+                            roleRequired: true,
+                            urgency: true,
+                            deadline: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            isPublic: true,
+                            gigType: true,
+                            _count: {
+                                select: {
+                                    applications: true,
+                                    submissions: true
+                                }
+                            },
+                            applications: {
+                                where: { status: 'PENDING' }, // Only fetch pending applications for efficiency
+                                select: {
+                                    id: true,
+                                    status: true
+                                }
+                            }
+                        }
+                    }),
+                    this.prisma.gig.count({ where })
+                ]);
+
+                // Enhance gigs with pending applications count
+                console.log('gigs', gigs.map(gig => (gig.id, gig.applications)));
+                const enhancedGigs = gigs.map(gig => ({
+                    ...gig,
+                    pendingApplicationsCount: gig.applications ? gig.applications.filter(app => app.status === 'PENDING').length : 0
+                }));
+
+                // Get total pending applications count - optimized with indexes
+                const totalPendingApplicationsAcrossAllGigs = await this.prisma.application.count({
+                    where: {
+                        status: 'PENDING', // Uses applications_status_idx index first (more selective)
+                        gig: {
+                            postedById: id // Then uses gigs_postedById_idx
+                        }
+                    }
+                });
+
+                // Get total active and completed gigs count - optimized with compound conditions
+                const [totalActiveGigs, totalCompletedGigs] = await Promise.all([
+                    this.prisma.gig.count({
+                        where: {
+                            status: { in: ['OPEN', 'ASSIGNED'] }, // Uses gigs_status_idx index first
+                            postedById: id // Then filters by postedById
+                        }
+                    }),
+                    this.prisma.gig.count({
+                        where: {
+                            status: 'COMPLETED', // Uses gigs_status_idx index first
+                            postedById: id // Then filters by postedById
+                        }
+                    })
+                ]);
+
+                // Get total budget across all gigs - optimized with indexed query
+                const allUserGigs = await this.prisma.gig.findMany({
+                    where: {
                         postedById: id
                     },
-                    status: 'PENDING'
-                }
-            });
+                    select: {
+                        budgetMax: true,
+                        budgetMin: true
+                    }
+                });
 
-            // Get total active gigs count (OPEN or ASSIGNED status) - irrespective of limit
-            const totalActiveGigs = await this.prisma.gig.count({
-                where: {
-                    postedById: id,
-                    status: { in: ['OPEN', 'ASSIGNED'] }
-                }
-            });
+                // Calculate total budget: use budgetMax if available, otherwise use budgetMin
+                const totalBudget = allUserGigs.reduce((sum, gig) => {
+                    const budget = gig.budgetMax !== null ? gig.budgetMax : (gig.budgetMin || 0);
+                    return sum + budget;
+                }, 0);
+                // Calculate total pending applications for current page gigs
+                const totalPendingApplicationsCurrentPage = enhancedGigs.reduce((total, gig) => total + gig.pendingApplicationsCount, 0);
 
-            // Get total completed gigs count - irrespective of limit
-            const totalCompletedGigs = await this.prisma.gig.count({
-                where: {
-                    postedById: id,
-                    status: 'COMPLETED'
-                }
-            });
-
-            // Get total budget across all gigs - irrespective of limit
-            // We need to sum budgetMax where available, otherwise use budgetMin
-            const allUserGigs = await this.prisma.gig.findMany({
-                where: {
-                    postedById: id
-                },
-                select: {
-                    budgetMax: true,
-                    budgetMin: true
-                }
-            });
-
-            // Calculate total budget: use budgetMax if available, otherwise use budgetMin
-            const totalBudget = allUserGigs.reduce((sum, gig) => {
-                const budget = gig.budgetMax !== null ? gig.budgetMax : (gig.budgetMin || 0);
-                return sum + budget;
-            }, 0);
-
-            // Calculate total pending applications for current page gigs
-            const totalPendingApplicationsCurrentPage = enhancedGigs.reduce((total, gig) => total + gig.pendingApplicationsCount, 0);
-
-            res.json({
-                success: true,
-                data: {
+                return {
                     gigs: enhancedGigs,
                     summary: {
                         totalGigs: total,
@@ -1193,7 +1321,12 @@ class GigController {
                         hasNext: skip + parseInt(limit) < total,
                         hasPrev: parseInt(page) > 1
                     }
-                }
+                };
+            }, 300); // 5 minute TTL
+
+            res.json({
+                success: true,
+                data: gigsData
             });
         } catch (error) {
             console.error('Error fetching posted gigs:', error);
@@ -1216,50 +1349,75 @@ class GigController {
                 });
             }
 
-            const skip = (page - 1) * limit;
+            // Create cache key with search parameters
+            const cacheKey = this.cache.generateKey('search_gigs',
+                `${query.trim().toLowerCase()}_${filters.category || 'all'}_${page}_${limit}`
+            );
 
-            // Build search conditions
-            const where = {
-                status: 'OPEN', // Only search in published gigs
-                OR: [
-                    { title: { contains: query, mode: 'insensitive' } },
-                    { description: { contains: query, mode: 'insensitive' } },
-                    { category: { contains: query, mode: 'insensitive' } },
-                    { roleRequired: { contains: query, mode: 'insensitive' } },
-                    { skillsRequired: { has: query } }
-                ]
-            };
+            // Use cache-first approach
+            const searchData = await this.cache.getList(cacheKey, async () => {
+                const skip = (page - 1) * limit;
 
-            // Add additional filters
-            if (filters.category) {
-                where.category = { contains: filters.category, mode: 'insensitive' };
-            }
+                // Build search conditions with optimized index usage
+                const where = {
+                    status: 'OPEN', // Uses gigs_status_idx index first (most selective)
+                    isPublic: true, // Uses gigs_isPublic_idx for privacy filtering
+                    OR: [
+                        { title: { contains: query, mode: 'insensitive' } },
+                        { description: { contains: query, mode: 'insensitive' } },
+                        { category: { contains: query, mode: 'insensitive' } },
+                        { roleRequired: { contains: query, mode: 'insensitive' } },
+                        { skillsRequired: { has: query } }
+                    ]
+                };
 
-            const [gigs, total] = await Promise.all([
-                this.prisma.gig.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy: { createdAt: 'desc' },
-                    include: {
-                        _count: {
-                            select: {
-                                applications: true
+                // Add additional filters with index optimization
+                if (filters.category) {
+                    where.category = { contains: filters.category, mode: 'insensitive' }; // Uses gigs_category_idx
+                }
+
+                const [gigs, total] = await Promise.all([
+                    this.prisma.gig.findMany({
+                        where,
+                        skip: parseInt(skip),
+                        take: parseInt(limit),
+                        orderBy: { createdAt: 'desc' },
+                        select: {
+                            id: true,
+                            title: true,
+                            description: true,
+                            category: true,
+                            budgetMin: true,
+                            budgetMax: true,
+                            budgetType: true,
+                            roleRequired: true,
+                            urgency: true,
+                            deadline: true,
+                            createdAt: true,
+                            gigType: true,
+                            location: true,
+                            experienceLevel: true,
+                            _count: {
+                                select: {
+                                    applications: true
+                                }
                             }
                         }
-                    }
-                }),
-                this.prisma.gig.count({ where })
-            ]);
+                    }),
+                    this.prisma.gig.count({ where })
+                ]);
 
-            res.json({
-                success: true,
-                data: {
+                return {
                     gigs,
                     total,
                     page: parseInt(page),
                     totalPages: Math.ceil(total / limit)
-                }
+                };
+            }, 180); // 3 minute TTL for search results
+
+            res.json({
+                success: true,
+                data: searchData
             });
         } catch (error) {
             console.error('Error searching gigs:', error);
@@ -1273,11 +1431,11 @@ class GigController {
     // GET /gigs/public/featured - Get featured gigs
     getFeaturedGigs = async (req, res) => {
         try {
-            // For now, return recent high-budget gigs as "featured"
-            // This can be enhanced with a dedicated featured flag in the schema
+            // Get featured gigs with optimized index usage
             const featuredGigs = await this.prisma.gig.findMany({
                 where: {
-                    status: 'OPEN',
+                    status: 'OPEN', // Uses gigs_status_idx first (most selective)
+                    isPublic: true, // Uses gigs_isPublic_idx
                     budgetMax: { gte: 1000 } // High budget gigs
                 },
                 orderBy: [
@@ -1286,7 +1444,22 @@ class GigController {
                     { createdAt: 'desc' }
                 ],
                 take: 10,
-                include: {
+                select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    category: true,
+                    budgetMin: true,
+                    budgetMax: true,
+                    budgetType: true,
+                    roleRequired: true,
+                    urgency: true,
+                    deadline: true,
+                    createdAt: true,
+                    gigType: true,
+                    location: true,
+                    experienceLevel: true,
+                    skillsRequired: true,
                     _count: {
                         select: {
                             applications: true
@@ -1311,11 +1484,15 @@ class GigController {
     // GET /gigs/public/categories - Get all categories
     getCategories = async (req, res) => {
         try {
-            // Get unique categories from existing gigs
+            // Get unique categories with optimized query using status index
             const categories = await this.prisma.gig.findMany({
-                where: { status: { not: 'DRAFT' } },
+                where: {
+                    status: { not: 'DRAFT' }, // Uses gigs_status_idx
+                    isPublic: true // Uses gigs_isPublic_idx
+                },
                 select: { category: true },
-                distinct: ['category']
+                distinct: ['category'],
+                orderBy: { category: 'asc' }
             });
 
             const categoryList = categories
@@ -1339,9 +1516,12 @@ class GigController {
     // GET /gigs/public/skills - Get popular skills
     getPopularSkills = async (req, res) => {
         try {
-            // Get all skills from gigs and count their frequency
+            // Get all skills with optimized query using status index
             const gigs = await this.prisma.gig.findMany({
-                where: { status: { not: 'DRAFT' } },
+                where: {
+                    status: { not: 'DRAFT' }, // Uses gigs_status_idx
+                    isPublic: true // Uses gigs_isPublic_idx
+                },
                 select: { skillsRequired: true }
             });
 
@@ -1768,57 +1948,54 @@ class GigController {
                 });
             }
 
-            // Check if gig exists
-            const gig = await this.prisma.gig.findUnique({
-                where: { id: gigId }
-            });
+            // Create cache key for gig applications
+            const cacheKey = this.cache.generateKey('gig_applications', gigId, userId);
 
-            if (!gig) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Gig not found'
+            // Use cache-first approach
+            const applicationsData = await this.cache.getList(cacheKey, async () => {
+                // Check if gig exists
+                const gig = await this.prisma.gig.findUnique({
+                    where: { id: gigId }
                 });
-            }
 
-            // Check if current user owns this gig
-            if (gig.postedById !== userId) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'You can only view applications for gigs you posted'
-                });
-            }
+                if (!gig) {
+                    throw new Error('Gig not found');
+                }
 
-            // Get ALL applications to this gig (for gig owner to review)
-            const applications = await this.prisma.application.findMany({
-                where: {
-                    gigId: gigId
-                },
-                orderBy: { appliedAt: 'desc' },
-                include: {
-                    _count: {
-                        select: { submissions: true }
+                // Check if current user owns this gig
+                if (gig.postedById !== userId) {
+                    throw new Error('You can only view applications for gigs you posted');
+                }
+
+                // Get ALL applications to this gig (for gig owner to review)
+                const applications = await this.prisma.application.findMany({
+                    where: {
+                        gigId: gigId
                     },
-                    gig: {
-                        select: {
-                            id: true,
-                            title: true,
-                            description: true,
-                            budgetMin: true,
-                            budgetMax: true,
-                            category: true,
-                            status: true,
-                            deadline: true,
-                            createdAt: true
+                    orderBy: { appliedAt: 'desc' },
+                    include: {
+                        _count: {
+                            select: { submissions: true }
+                        },
+                        gig: {
+                            select: {
+                                id: true,
+                                title: true,
+                                description: true,
+                                budgetMin: true,
+                                budgetMax: true,
+                                category: true,
+                                status: true,
+                                deadline: true,
+                                createdAt: true
+                            }
                         }
                     }
-                }
-            });
+                });
 
-            const applicationsStatus = applications.map((application) => ({ gigId: application.gigId, status: application.status }));
-            console.log('applicationsStatus', applicationsStatus);
-            res.json({
-                success: true,
-                data: {
+                const applicationsStatus = applications.map((application) => ({ gigId: application.gigId, status: application.status }));
+
+                return {
                     applicationsStatus: applicationsStatus,
                     gig: {
                         id: gig.id,
@@ -1828,7 +2005,12 @@ class GigController {
                     },
                     applications: applications,
                     totalApplications: applications.length
-                }
+                };
+            }, 300); // 5 minute TTL
+
+            res.json({
+                success: true,
+                data: applicationsData
             });
         } catch (error) {
             console.error('Error fetching gig applications:', error);
@@ -1931,45 +2113,55 @@ class GigController {
     getGigSubmissions = async (req, res) => {
         try {
             const { id } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
 
-            // Check if user owns this gig
-            const gig = await this.prisma.gig.findUnique({
-                where: { id }
-            });
-
-            if (!gig) {
-                return res.status(404).json({
+            if (!userId) {
+                return res.status(401).json({
                     success: false,
-                    error: 'Gig not found'
+                    error: 'Authentication required'
                 });
             }
 
-            if (gig.postedById !== req.user.id) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'You can only view submissions for your own gigs'
-                });
-            }
+            // Create cache key for gig submissions
+            const cacheKey = this.cache.generateKey('gig_submissions', id, userId);
 
-            const submissions = await this.prisma.submission.findMany({
-                where: { gigId: id },
-                include: {
-                    application: {
-                        select: {
-                            id: true,
-                            applicantId: true,
-                            applicantType: true,
-                            quotedPrice: true,
-                            status: true
+            // Use cache-first approach
+            const submissionsData = await this.cache.getList(cacheKey, async () => {
+                // Check if user owns this gig
+                const gig = await this.prisma.gig.findUnique({
+                    where: { id }
+                });
+
+                if (!gig) {
+                    throw new Error('Gig not found');
+                }
+
+                if (gig.postedById !== userId) {
+                    throw new Error('You can only view submissions for your own gigs');
+                }
+
+                const submissions = await this.prisma.submission.findMany({
+                    where: { gigId: id },
+                    include: {
+                        application: {
+                            select: {
+                                id: true,
+                                applicantId: true,
+                                applicantType: true,
+                                quotedPrice: true,
+                                status: true
+                            }
                         }
-                    }
-                },
-                orderBy: { submittedAt: 'desc' }
-            });
+                    },
+                    orderBy: { submittedAt: 'desc' }
+                });
+
+                return submissions;
+            }, 300); // 5 minute TTL
 
             res.json({
                 success: true,
-                data: submissions
+                data: submissionsData
             });
         } catch (error) {
             console.error('Error fetching submissions:', error);

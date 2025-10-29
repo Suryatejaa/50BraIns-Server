@@ -1,7 +1,25 @@
 // gig-service/src/controllers/workHistory.controller.js
 
 const { PrismaClient } = require('@prisma/client');
+const gigCacheService = require('../services/gigCacheService');
 const prisma = new PrismaClient();
+
+// Helper function for performance monitoring
+const measureQueryPerformance = async (queryName, queryFn) => {
+  const startTime = Date.now();
+  try {
+    const result = await queryFn();
+    const duration = Date.now() - startTime;
+    if (duration > 1000) {
+      console.warn(`Slow query detected - ${queryName}: ${duration}ms`);
+    }
+    return result;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`Query failed - ${queryName}: ${duration}ms`, error.message);
+    throw error;
+  }
+};
 
 // Get applicant's work history
 exports.getApplicantHistory = async (req, res) => {
@@ -9,29 +27,68 @@ exports.getApplicantHistory = async (req, res) => {
     const { applicantId } = req.params;
     const { status, limit = 50, offset = 0 } = req.query;
 
-    const where = { applicantId };
-    if (status) where.applicationStatus = status;
+    // Create cache key with all parameters
+    const cacheKey = gigCacheService.generateKey('applicant_history', applicantId, `${status || 'all'}_${limit}_${offset}`);
 
-    const history = await prisma.applicationWorkHistory.findMany({
-      where,
-      orderBy: { appliedAt: 'desc' },
-      take: parseInt(limit),
-      skip: parseInt(offset),
-      include: {
-        // You can add relations if you have Gig model
-      }
-    });
+    // Use cache-first approach
+    const historyData = await gigCacheService.getList(cacheKey, async () => {
+      // Build WHERE clause with most selective conditions first for better index usage
+      const where = { applicantId };
+      if (status) where.applicationStatus = status;
 
-    const total = await prisma.applicationWorkHistory.count({ where });
+      // Execute queries in parallel with performance monitoring
+      const [history, total] = await Promise.all([
+        measureQueryPerformance('getApplicantHistory_findMany', () =>
+          prisma.applicationWorkHistory.findMany({
+            where,
+            select: {
+              id: true,
+              applicationId: true,
+              gigId: true,
+              applicantId: true,
+              gigOwnerId: true,
+              gigPrice: true,
+              quotedPrice: true,
+              appliedAt: true,
+              acceptedAt: true,
+              rejectedAt: true,
+              applicationStatus: true,
+              workSubmittedAt: true,
+              workReviewedAt: true,
+              submissionStatus: true,
+              completedAt: true,
+              paidAt: true,
+              paymentAmount: true,
+              paymentStatus: true,
+              revisionCount: true,
+              lastActivityAt: true,
+              createdAt: true,
+              updatedAt: true
+            },
+            orderBy: { appliedAt: 'desc' },
+            take: parseInt(limit),
+            skip: parseInt(offset)
+          })
+        ),
+        measureQueryPerformance('getApplicantHistory_count', () =>
+          prisma.applicationWorkHistory.count({ where })
+        )
+      ]);
+
+      return {
+        history,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      };
+    }, 600); // 10 minute TTL for history data
 
     res.json({
       success: true,
-      data: history,
-      pagination: {
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      }
+      data: historyData.history,
+      pagination: historyData.pagination
     });
   } catch (error) {
     console.error('Error fetching work history:', error);
@@ -44,29 +101,40 @@ exports.getApplicantEarnings = async (req, res) => {
   try {
     const { applicantId } = req.params;
 
-    const summary = await prisma.applicationWorkHistory.aggregate({
-      where: {
-        applicantId,
-        paymentStatus: 'PAID'
-      },
-      _sum: {
-        paymentAmount: true
-      },
-      _count: {
-        id: true
-      },
-      _avg: {
-        paymentAmount: true
-      }
-    });
+    // Create cache key for earnings
+    const cacheKey = gigCacheService.generateKey('applicant_earnings', applicantId);
 
-    res.json({
-      success: true,
-      data: {
+    // Use cache-first approach
+    const earningsData = await gigCacheService.getEntity(cacheKey, async () => {
+      // Order WHERE clause for optimal index usage: applicantId (indexed) + paymentStatus (indexed)
+      const summary = await measureQueryPerformance('getApplicantEarnings_aggregate', () =>
+        prisma.applicationWorkHistory.aggregate({
+          where: {
+            applicantId,
+            paymentStatus: 'PAID'
+          },
+          _sum: {
+            paymentAmount: true
+          },
+          _count: {
+            id: true
+          },
+          _avg: {
+            paymentAmount: true
+          }
+        })
+      );
+
+      return {
         totalEarnings: summary._sum.paymentAmount || 0,
         completedGigs: summary._count.id,
         averageEarning: summary._avg.paymentAmount || 0
-      }
+      };
+    }, 1800); // 30 minute TTL for earnings data
+
+    res.json({
+      success: true,
+      data: earningsData
     });
   } catch (error) {
     console.error('Error fetching earnings:', error);
@@ -87,6 +155,12 @@ exports.updateWorkHistory = async (req, res) => {
       where: { applicationId },
       data: updateData
     });
+
+    // Invalidate related caches
+    if (updated.applicantId) {
+      await gigCacheService.invalidatePattern(`applicant_history:${updated.applicantId}:*`);
+      await gigCacheService.invalidatePattern(`applicant_earnings:${updated.applicantId}`);
+    }
 
     res.json({
       success: true,

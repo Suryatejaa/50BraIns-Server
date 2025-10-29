@@ -28,16 +28,15 @@ router.get('/', asyncHandler(gig_controller.getGigs));
 // GET /gigs/feed - Enhanced gigs feed (alias for main route)
 router.get('/feed', asyncHandler(gig_controller.getGigs));
 
-
 // GET /gigs/my-drafts - Get user's draft gigs (authenticated)
 router.get('/my-drafts', requireAuth, asyncHandler(gig_controller.getMyDrafts));
 
-// GET /gigs/my-posted - Get user's posted gigs (authenticated)
-router.get('/my-posted', requireAuth, asyncHandler(gigController.getMyPostedGigs));
 
 {/***************************************************************
-****************gig Routes****************
-************************************************/   }
+    ****************gig Routes****************
+    ************************************************/   }
+// GET /gigs/my-posted - Get user's posted gigs (authenticated)
+router.get('/my-posted', requireAuth, asyncHandler(gigController.getMyPostedGigs));
 
 // POST /gigs/draft/:id/publish - Publish a draft gig (authenticated)
 router.post('/draft/:id/publish', requireAuth, asyncHandler(gigController.publishDraft));
@@ -80,13 +79,6 @@ router.patch('/:id/publish', requireAuth, asyncHandler(gigController.publishGig)
 
 // PATCH /gigs/:id/close - Close a gig (authenticated, gig owner only)
 router.patch('/:id/close', requireAuth, asyncHandler(gigController.closeGig));
-
-// POST /gigs/:id/boost - Boost a gig (authenticated, gig owner only)
-router.post('/:id/boost', requireAuth, asyncHandler(gigController.boostGig));
-
-// GET /gigs/:id/boosts - Get gig boosts (authenticated, gig owner only)
-router.get('/:id/boosts', requireAuth, asyncHandler(gigController.getGigBoosts));
-
 
 
 {/***************************************************************
@@ -149,6 +141,10 @@ router.put('/:id/status', requireAuth, asyncHandler(gigController.updateGigStatu
 // PUT /gigs/submissions/:id - Update a submission (submitter only)
 router.put('/submissions/:id', requireAuth, asyncHandler(gigController.updateSubmission));
 
+// *******************************************
+// *************** UNNECESSARY ROUTES ****************
+// *******************************************
+
 // POST /gigs/:gigId/milestones - Create a milestone for a gig
 router.post('/:gigId/milestones', requireAuth, asyncHandler(gigController.createMilestone));
 
@@ -176,10 +172,19 @@ router.get('/:gigId/milestones', requireAuth, asyncHandler(gigController.getGigM
 // NEW: Get tasks for a specific gig
 router.get('/:gigId/tasks', requireAuth, asyncHandler(gigController.getGigTasks));
 
+// POST /gigs/:id/boost - Boost a gig (authenticated, gig owner only)
+router.post('/:id/boost', requireAuth, asyncHandler(gigController.boostGig));
+
+// GET /gigs/:id/boosts - Get gig boosts (authenticated, gig owner only)
+router.get('/:id/boosts', requireAuth, asyncHandler(gigController.getGigBoosts));
+//*************************************************/
+//*************** UNNECESSARY ROUTES ****************
+//*************************************************/
+
 // Work History Routes
-router.get('/work-history/applicant/:applicantId', workHistoryController.getApplicantHistory);
-router.patch('/work-history/application/:applicationId', workHistoryController.updateWorkHistory);
 router.get('/work-history/applicant/:applicantId/earnings', workHistoryController.getApplicantEarnings);
+router.patch('/work-history/application/:applicationId', workHistoryController.updateWorkHistory);
+router.get('/work-history/applicant/:applicantId', workHistoryController.getApplicantHistory);
 
 // Campaign History Routes
 router.get('/campaigns/brand/:brandId', campaignHistoryController.getBrandCampaigns);

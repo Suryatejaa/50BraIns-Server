@@ -1,12 +1,31 @@
 const { json } = require('stream/consumers');
 const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
+const gigCacheService = require('../services/gigCacheService');
 const Joi = require('joi');
 const { title } = require('process');
 class ApplicationController {
     constructor() {
         this.prisma = databaseService.getClient();
+        this.cache = gigCacheService;
     }
+
+    // Helper function for performance monitoring
+    measureQueryPerformance = async (queryName, queryFn) => {
+        const startTime = Date.now();
+        try {
+            const result = await queryFn();
+            const duration = Date.now() - startTime;
+            if (duration > 1000) {
+                console.warn(`Slow query detected - ${queryName}: ${duration}ms`);
+            }
+            return result;
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            console.error(`Query failed - ${queryName}: ${duration}ms`, error.message);
+            throw error;
+        }
+    };
 
     //=================================================================
     //======================== VALIDATION SCHEMAS =========================
@@ -604,14 +623,20 @@ class ApplicationController {
                 }
             }
 
-            // Check if this applicant has already applied
-            const existingApplication = await this.prisma.application.findFirst({
-                where: {
-                    gigId: id,
-                    applicantId: applicantId,
-                    applicantType: value.applicantType
-                }
-            });
+            // Check if this applicant has already applied - optimized with compound index
+            const existingApplication = await this.measureQueryPerformance('applyToGig_findFirst', () =>
+                this.prisma.application.findFirst({
+                    where: {
+                        gigId: id,              // Uses applications_gigId_idx
+                        applicantId: applicantId,
+                        applicantType: value.applicantType
+                    },
+                    select: {
+                        id: true,
+                        status: true
+                    }
+                })
+            );
 
             if (existingApplication) {
                 console.log("❌ [Gig Service] Existing application found:", {
@@ -764,6 +789,11 @@ class ApplicationController {
                 applicantId: applicantId
             });
 
+            // Invalidate related caches
+            await this.cache.invalidateApplication(application.id, application.gigId, application.applicantId);
+            await this.cache.invalidatePattern(`received_applications:${gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
+
             res.status(201).json({
                 success: true,
                 message: 'Application submitted successfully',
@@ -858,15 +888,21 @@ class ApplicationController {
                 });
             }
 
-            // Check if there's already an application from this applicant
-            const existingApplication = await this.prisma.application.findUnique({
-                where: {
-                    applicantId_gigId: {
-                        applicantId: applicantId,
-                        gigId: id
+            // Check if there's already an application from this applicant - optimized query
+            const existingApplication = await this.measureQueryPerformance('assignGig_findUnique', () =>
+                this.prisma.application.findUnique({
+                    where: {
+                        applicantId_gigId: {
+                            applicantId: applicantId,
+                            gigId: id
+                        }
+                    },
+                    select: {
+                        id: true,
+                        status: true
                     }
-                }
-            });
+                })
+            );
 
             // Define active statuses that should prevent re-assignment
             const activeStatuses = ['PENDING', 'APPROVED', 'SUBMITTED'];
@@ -1682,6 +1718,11 @@ class ApplicationController {
                 message: `You have successfully withdrawn your application for "${application.gig.title}"`
             });
 
+            // Invalidate related caches
+            await this.cache.invalidateApplication(application.id, application.gigId, application.applicantId);
+            await this.cache.invalidatePattern(`received_applications:${gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
+
             res.json({
                 success: true,
                 message: 'Application withdrawn successfully'
@@ -2010,7 +2051,8 @@ class ApplicationController {
 
             // Update application work history for rejection
             await this.prisma.applicationWorkHistory.upsert({
-                where: { applicationId: id
+                where: {
+                    applicationId: id
                 },
                 update: {
                     rejectedAt: new Date(),
@@ -2441,102 +2483,122 @@ class ApplicationController {
                 category
             } = req.query;
 
-            const skip = (page - 1) * limit;
+            // Create cache key with all parameters
+            const cacheKey = this.cache.generateKey('received_applications', userId, `${status || 'all'}_${search || 'nosearch'}_${gigId || 'all'}_${category || 'all'}_${page}_${limit}_${sortBy}_${sort}`);
 
-            // Build where conditions
-            const where = {
-                gig: {
-                    postedById: userId // Only gigs created by current user
+            // Use cache-first approach
+            const applicationsData = await this.cache.getList(cacheKey, async () => {
+                const skip = (page - 1) * limit;
+
+                // Build where conditions for optimal index usage
+                const where = {
+                    gig: {
+                        postedById: userId    // Use indexed postedById field
+                    }
+                };
+
+                // Add status filter if provided - uses applications_status_idx
+                if (status) {
+                    if (Array.isArray(status)) {
+                        where.status = { in: status };
+                    } else {
+                        where.status = status;
+                    }
                 }
-            };
 
-            // Add status filter if provided
-            if (status) {
-                if (Array.isArray(status)) {
-                    where.status = { in: status };
-                } else {
-                    where.status = status;
+                // Add specific gig filter if provided - uses applications_gigId_idx
+                if (gigId) {
+                    where.gigId = gigId;
                 }
-            }
 
-            // Add specific gig filter if provided
-            if (gigId) {
-                where.gigId = gigId;
-            }
+                // Add category filter if provided
+                if (category) {
+                    where.gig.category = category;
+                }
 
-            // Add category filter if provided
-            if (category) {
-                where.gig.category = category;
-            }
+                // Add search filter if provided (search in proposal or gig title)
+                if (search) {
+                    where.OR = [
+                        { proposal: { contains: search, mode: 'insensitive' } },
+                        { gig: { title: { contains: search, mode: 'insensitive' } } }
+                    ];
+                }
 
-            // Add search filter if provided (search in proposal or gig title)
-            if (search) {
-                where.OR = [
-                    { proposal: { contains: search, mode: 'insensitive' } },
-                    { gig: { title: { contains: search, mode: 'insensitive' } } }
-                ];
-            }
+                // Build orderBy
+                const orderBy = {};
+                orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
 
-            // Build orderBy
-            const orderBy = {};
-            orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
-
-            // Execute queries
-            const [applications, total] = await Promise.all([
-                this.prisma.application.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy,
-                    include: {
-                        gig: {
+                // Execute queries in parallel with performance monitoring
+                const [applications, total] = await Promise.all([
+                    this.measureQueryPerformance('getReceivedApplications_findMany', () =>
+                        this.prisma.application.findMany({
+                            where,
+                            skip: parseInt(skip),
+                            take: parseInt(limit),
+                            orderBy,
                             select: {
                                 id: true,
-                                title: true,
-                                description: true,
-                                budgetMin: true,
-                                budgetMax: true,
-                                budgetType: true,
-                                category: true,
+                                gigId: true,
+                                applicantId: true,
+                                applicantType: true,
+                                clanId: true,
+                                proposal: true,
+                                quotedPrice: true,
+                                estimatedTime: true,
+                                portfolio: true,
                                 status: true,
-                                deadline: true,
-                                createdAt: true
+                                appliedAt: true,
+                                respondedAt: true,
+                                rejectionReason: true,
+                                gig: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        description: true,
+                                        budgetMin: true,
+                                        budgetMax: true,
+                                        budgetType: true,
+                                        category: true,
+                                        status: true,
+                                        deadline: true,
+                                        createdAt: true
+                                    }
+                                },
+                                _count: {
+                                    select: { submissions: true }
+                                }
                             }
-                        },
-                        _count: {
-                            select: { submissions: true }
-                        }
+                        })
+                    ),
+                    this.measureQueryPerformance('getReceivedApplications_count', () =>
+                        this.prisma.application.count({ where })
+                    )
+                ]);
+
+                // Format applications with additional metadata
+                const formattedApplications = applications.map(app => ({
+                    id: app.id,
+                    gigId: app.gigId,
+                    applicantId: app.applicantId,
+                    applicantType: app.applicantType,
+                    proposal: app.proposal,
+                    quotedPrice: app.quotedPrice,
+                    estimatedTime: app.estimatedTime,
+                    portfolio: app.portfolio,
+                    status: app.status,
+                    appliedAt: app.appliedAt,
+                    respondedAt: app.respondedAt,
+                    rejectionReason: app.rejectionReason,
+                    submissionsCount: app._count.submissions,
+                    gig: {
+                        ...app.gig,
+                        daysOld: Math.floor((new Date() - new Date(app.gig.createdAt)) / (1000 * 60 * 60 * 24)),
+                        daysUntilDeadline: app.gig.deadline ?
+                            Math.ceil((new Date(app.gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
                     }
-                }),
-                this.prisma.application.count({ where })
-            ]);
+                }));
 
-            // Format applications with additional metadata
-            const formattedApplications = applications.map(app => ({
-                id: app.id,
-                gigId: app.gigId,
-                applicantId: app.applicantId,
-                applicantType: app.applicantType,
-                proposal: app.proposal,
-                quotedPrice: app.quotedPrice,
-                estimatedTime: app.estimatedTime,
-                portfolio: app.portfolio,
-                status: app.status,
-                appliedAt: app.appliedAt,
-                respondedAt: app.respondedAt,
-                rejectionReason: app.rejectionReason,
-                submissionsCount: app._count.submissions,
-                gig: {
-                    ...app.gig,
-                    daysOld: Math.floor((new Date() - new Date(app.gig.createdAt)) / (1000 * 60 * 60 * 24)),
-                    daysUntilDeadline: app.gig.deadline ?
-                        Math.ceil((new Date(app.gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
-                }
-            }));
-
-            res.json({
-                success: true,
-                data: {
+                return {
                     applications: formattedApplications,
                     pagination: {
                         page: parseInt(page),
@@ -2561,7 +2623,12 @@ class ApplicationController {
                         rejectedCount: applications.filter(app => app.status === 'REJECTED').length,
                         withdrawnCount: applications.filter(app => app.status === 'WITHDRAWN').length
                     }
-                }
+                };
+            }, 300); // 5 minute TTL
+
+            res.json({
+                success: true,
+                data: applicationsData
             });
         } catch (error) {
             console.error('Error fetching received applications:', error);
@@ -2663,65 +2730,85 @@ class ApplicationController {
                 search
             } = req.query;
 
-            const skip = (page - 1) * limit;
+            // Create cache key with all parameters
+            const cacheKey = this.cache.generateKey('user_applications', userId, `${status || 'all'}_${search || 'nosearch'}_${page}_${limit}_${sortBy}_${sort}`);
 
-            // Build where conditions
-            const where = {
-                applicantId: userId
-            };
+            // Use cache-first approach
+            const applicationsData = await this.cache.getList(cacheKey, async () => {
+                const skip = (page - 1) * limit;
 
-            // Add status filter if provided
-            if (status) {
-                if (Array.isArray(status)) {
-                    where.status = { in: status };
-                } else {
-                    where.status = status;
-                }
-            }
-
-            // Add search filter if provided (search in gig title)
-            if (search) {
-                where.gig = {
-                    OR: [
-                        { title: { contains: search, mode: 'insensitive' } },
-                        { description: { contains: search, mode: 'insensitive' } }
-                    ]
+                // Build where conditions with indexed applicantId field first
+                const where = {
+                    applicantId: userId  // Uses applications_applicantId_idx
                 };
-            }
 
-            // Build orderBy
-            const orderBy = {};
-            orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
+                // Add status filter if provided - uses applications_status_idx
+                if (status) {
+                    if (Array.isArray(status)) {
+                        where.status = { in: status };
+                    } else {
+                        where.status = status;
+                    }
+                }
 
-            // Execute queries
-            const [applications, total] = await Promise.all([
-                this.prisma.application.findMany({
-                    where,
-                    skip: parseInt(skip),
-                    take: parseInt(limit),
-                    orderBy,
-                    include: {
-                        gig: {
+                // Add search filter if provided (search in gig title)
+                if (search) {
+                    where.gig = {
+                        OR: [
+                            { title: { contains: search, mode: 'insensitive' } },
+                            { description: { contains: search, mode: 'insensitive' } }
+                        ]
+                    };
+                }
+
+                // Build orderBy
+                const orderBy = {};
+                orderBy[sortBy] = sort === 'asc' ? 'asc' : 'desc';
+
+                // Execute queries in parallel with performance monitoring
+                const [applications, total] = await Promise.all([
+                    this.measureQueryPerformance('getMyApplications_findMany', () =>
+                        this.prisma.application.findMany({
+                            where,
+                            skip: parseInt(skip),
+                            take: parseInt(limit),
+                            orderBy,
                             select: {
                                 id: true,
-                                title: true,
-                                description: true,
-                                budgetMin: true,
-                                budgetMax: true,
-                                budgetType: true,
+                                gigId: true,
+                                applicantId: true,
+                                applicantType: true,
+                                clanId: true,
+                                proposal: true,
+                                quotedPrice: true,
+                                estimatedTime: true,
+                                portfolio: true,
                                 status: true,
-                                deadline: true,
-                                createdAt: true
+                                appliedAt: true,
+                                respondedAt: true,
+                                rejectionReason: true,
+                                gig: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        description: true,
+                                        budgetMin: true,
+                                        budgetMax: true,
+                                        budgetType: true,
+                                        status: true,
+                                        deadline: true,
+                                        createdAt: true
+                                    }
+                                }
                             }
-                        }
-                    }
-                }),
-                this.prisma.application.count({ where })
-            ]);
+                        })
+                    ),
+                    this.measureQueryPerformance('getMyApplications_count', () =>
+                        this.prisma.application.count({ where })
+                    )
+                ]);
 
-            res.json({
-                success: true,
-                data: {
+                return {
                     applications,
                     pagination: {
                         page: parseInt(page),
@@ -2731,7 +2818,12 @@ class ApplicationController {
                         hasNext: skip + parseInt(limit) < total,
                         hasPrev: parseInt(page) > 1
                     }
-                }
+                };
+            }, 300); // 5 minute TTL
+
+            res.json({
+                success: true,
+                data: applicationsData
             });
         } catch (error) {
             console.error('Error fetching applications:', error);
