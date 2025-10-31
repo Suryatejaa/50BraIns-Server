@@ -504,6 +504,75 @@ const syncEmailVerification = async (userId, verificationData) => {
     }
 };
 
+/**
+ * Sync username update from auth-service
+ */
+const syncUsernameUpdate = async (userId, usernameData) => {
+    try {
+        logger.info(`Syncing username update for user: ${userId}`);
+
+        // Update user's username
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                username: usernameData.username,
+                lastUsernameUpdated: usernameData.lastUsernameUpdated ? new Date(usernameData.lastUsernameUpdated) : null,
+                updatedAt: new Date()
+            }
+        });
+
+        // Clear cached user data to ensure fresh data is returned
+        const userCacheService = require('./userCacheService');
+        await userCacheService.invalidatePattern(`user:*:${userId}`);
+        logger.info(`✅ [Cache] Invalidated cache for user after username update: ${userId}`);
+
+        logger.info(`Username synced successfully for user: ${userId}`);
+        return {
+            success: true,
+            user: updatedUser,
+            message: 'Username updated successfully'
+        };
+    } catch (error) {
+        logger.error(`Error syncing username update for user ${userId}:`, error);
+        throw error;
+    }
+};
+
+/**
+ * Sync email update from auth-service
+ */
+const syncEmailUpdate = async (userId, emailData) => {
+    try {
+        logger.info(`Syncing email update for user: ${userId}`);
+
+        // Update user's email and verification status
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                email: emailData.email,
+                emailVerified: emailData.emailVerified,
+                emailVerifiedAt: emailData.emailVerifiedAt ? new Date(emailData.emailVerifiedAt) : null,
+                updatedAt: new Date()
+            }
+        });
+
+        // Clear cached user data to ensure fresh data is returned
+        const userCacheService = require('./userCacheService');
+        await userCacheService.invalidatePattern(`user:*:${userId}`);
+        logger.info(`✅ [Cache] Invalidated cache for user after email update: ${userId}`);
+
+        logger.info(`Email synced successfully for user: ${userId}`);
+        return {
+            success: true,
+            user: updatedUser,
+            message: 'Email updated successfully'
+        };
+    } catch (error) {
+        logger.error(`Error syncing email update for user ${userId}:`, error);
+        throw error;
+    }
+};
+
 module.exports = {
     syncUserFromAuthService,
     createUserCache,
@@ -515,5 +584,7 @@ module.exports = {
     getSyncStatus,
     updateSearchScore,
     syncUsersByroles,
-    syncEmailVerification
+    syncEmailVerification,
+    syncUsernameUpdate,
+    syncEmailUpdate
 };

@@ -9,6 +9,9 @@ class OTPService {
         this.otpExpiry = 10 * 60 * 1000; // 10 minutes in milliseconds
         this.maxAttempts = 3;
         this.cooldownPeriod = 15 * 60 * 1000; // 15 minutes cooldown after max attempts
+        // Enhanced rate limiting for email providers
+        this.dailyLimit = process.env.NODE_ENV === 'production' ? 50 : 100; // Daily OTP limit per email
+        this.hourlyLimit = process.env.NODE_ENV === 'production' ? 10 : 20; // Hourly OTP limit per email
     }
 
     /**
@@ -46,7 +49,12 @@ class OTPService {
             // Clean up expired OTPs for this email and purpose
             await this.cleanupExpiredOTPs(email, purpose);
 
-            // Check if user has exceeded max attempts
+            // Enhanced rate limiting checks
+            const now = new Date();
+            const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+            const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+            // Check recent attempts (15-minute cooldown)
             const recentAttempts = await prisma.oTPRecord.count({
                 where: {
                     email: email.toLowerCase(),
@@ -59,6 +67,34 @@ class OTPService {
 
             if (recentAttempts >= this.maxAttempts) {
                 throw new ValidationError(`Too many OTP requests. Please wait ${this.cooldownPeriod / 60000} minutes before requesting again.`);
+            }
+
+            // Check hourly limit
+            const hourlyAttempts = await prisma.oTPRecord.count({
+                where: {
+                    email: email.toLowerCase(),
+                    createdAt: {
+                        gte: hourAgo
+                    }
+                }
+            });
+
+            if (hourlyAttempts >= this.hourlyLimit) {
+                throw new ValidationError(`Hourly OTP limit exceeded. Please try again in an hour.`);
+            }
+
+            // Check daily limit
+            const dailyAttempts = await prisma.oTPRecord.count({
+                where: {
+                    email: email.toLowerCase(),
+                    createdAt: {
+                        gte: dayAgo
+                    }
+                }
+            });
+
+            if (dailyAttempts >= this.dailyLimit) {
+                throw new ValidationError(`Daily OTP limit exceeded. Please try again tomorrow.`);
             }
 
             // Store new OTP

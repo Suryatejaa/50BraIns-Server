@@ -119,6 +119,47 @@ class EventHandlerService {
                 throw error;
             }
         });
+
+        // Handle username update events
+        this.handlers.set('user.username_updated', async (eventData) => {
+            try {
+                console.log('🔄 [Event Handler] Processing user.username_updated event:', eventData);
+
+                // Update user's username in user service
+                const { syncUsernameUpdate } = require('./sync.service');
+                const result = await syncUsernameUpdate(eventData.userId, {
+                    username: eventData.newUsername,
+                    lastUsernameUpdated: eventData.updatedAt
+                });
+
+                console.log('✅ [Event Handler] Username updated successfully:', result);
+                return { success: true, message: 'Username updated successfully' };
+            } catch (error) {
+                console.error('❌ [Event Handler] Error processing user.username_updated event:', error);
+                throw error;
+            }
+        });
+
+        // Handle email update events
+        this.handlers.set('user.email_updated', async (eventData) => {
+            try {
+                console.log('🔄 [Event Handler] Processing user.email_updated event:', eventData);
+
+                // Update user's email in user service
+                const { syncEmailUpdate } = require('./sync.service');
+                const result = await syncEmailUpdate(eventData.userId, {
+                    email: eventData.newEmail,
+                    emailVerified: eventData.emailVerified,
+                    emailVerifiedAt: eventData.updatedAt
+                });
+
+                console.log('✅ [Event Handler] Email updated successfully:', result);
+                return { success: true, message: 'Email updated successfully' };
+            } catch (error) {
+                console.error('❌ [Event Handler] Error processing user.email_updated event:', error);
+                throw error;
+            }
+        });
     }
 
     async handleEvent(eventData, routingKey) {
@@ -166,6 +207,14 @@ class EventHandlerService {
 
     async handleUserVerified(userData) {
         return this.handleEvent(userData, 'user.verified');
+    }
+
+    async handleUsernameUpdated(userData) {
+        return this.handleEvent(userData, 'user.username_updated');
+    }
+
+    async handleEmailUpdated(userData) {
+        return this.handleEvent(userData, 'user.email_updated');
     }
 }
 

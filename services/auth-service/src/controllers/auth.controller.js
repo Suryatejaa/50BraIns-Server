@@ -481,6 +481,122 @@ const disable2FA = catchAsync(async (req, res) => {
     });
 });
 
+// Validation schemas for profile updates
+const updateUsernameSchema = Joi.object({
+    username: Joi.string().min(3).max(30).pattern(/^[a-zA-Z0-9._-]+$/).required().messages({
+        'string.pattern.base': 'Username can only contain letters, numbers, periods, underscores, and hyphens',
+        'string.min': 'Username must be at least 3 characters long',
+        'string.max': 'Username cannot exceed 30 characters',
+        'any.required': 'Username is required'
+    })
+});
+
+const initiateEmailUpdateSchema = Joi.object({
+    newEmail: Joi.string().email().required().messages({
+        'string.email': 'Please provide a valid email address',
+        'any.required': 'New email is required'
+    })
+});
+
+const completeEmailUpdateSchema = Joi.object({
+    newEmail: Joi.string().email().required().messages({
+        'string.email': 'Please provide a valid email address',
+        'any.required': 'New email is required'
+    }),
+    otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+        'string.length': 'OTP must be 6 digits',
+        'string.pattern.base': 'OTP must contain only numbers',
+        'any.required': 'OTP is required'
+    })
+});
+
+/**
+ * Update username
+ */
+const updateUsername = catchAsync(async (req, res) => {
+    // Validate input
+    const { error, value } = updateUsernameSchema.validate(req.body);
+    if (error) {
+        throw new ValidationError(error.details[0].message);
+    }
+
+    const userId = req.user.id;
+
+    // Update username through service
+    const result = await authService.updateUsername(userId, value.username);
+
+    logger.info(`Username updated successfully: ${req.user.email}`, {
+        userId,
+        oldUsername: req.user.username,
+        newUsername: value.username,
+        ip: req.ip
+    });
+
+    res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.data
+    });
+});
+
+/**
+ * Initiate email update
+ */
+const initiateEmailUpdate = catchAsync(async (req, res) => {
+    // Validate input
+    const { error, value } = initiateEmailUpdateSchema.validate(req.body);
+    if (error) {
+        throw new ValidationError(error.details[0].message);
+    }
+
+    const userId = req.user.id;
+
+    // Initiate email update through service
+    const result = await authService.initiateEmailUpdate(userId, value.newEmail);
+
+    logger.info(`Email update initiated: ${req.user.email} -> ${value.newEmail}`, {
+        userId,
+        currentEmail: req.user.email,
+        newEmail: value.newEmail,
+        ip: req.ip
+    });
+
+    res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.data
+    });
+});
+
+/**
+ * Complete email update
+ */
+const completeEmailUpdate = catchAsync(async (req, res) => {
+    // Validate input
+    const { error, value } = completeEmailUpdateSchema.validate(req.body);
+    if (error) {
+        throw new ValidationError(error.details[0].message);
+    }
+
+    const userId = req.user.id;
+
+    // Complete email update through service
+    const result = await authService.completeEmailUpdate(userId, value.newEmail, value.otp);
+
+    logger.info(`Email updated successfully: ${req.user.email} -> ${value.newEmail}`, {
+        userId,
+        oldEmail: req.user.email,
+        newEmail: value.newEmail,
+        ip: req.ip
+    });
+
+    res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.data
+    });
+});
+
 module.exports = {
     register,
     login,
@@ -494,7 +610,10 @@ module.exports = {
     verify2FA,
     disable2FA,
     deactivateAccount,
-    deleteAccount
+    deleteAccount,
+    updateUsername,
+    initiateEmailUpdate,
+    completeEmailUpdate
 };
 
 // Global error handler for async routes (for direct use in tests or if not handled by middleware)

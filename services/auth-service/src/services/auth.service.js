@@ -1158,6 +1158,219 @@ class AuthService {
             throw error;
         }
     }
+
+    /**
+     * Update username with 15-day restriction
+     */
+    async updateUsername(userId, newUsername) {
+        try {
+            // Get current user
+            const user = await prisma.user.findUnique({
+                where: { id: userId }
+            });
+
+            if (!user) {
+                throw new AuthError('User not found');
+            }
+
+            // Check if username is the same
+            if (user.username === newUsername) {
+                throw new ValidationError('New username must be different from current username');
+            }
+
+            // Check 15-day restriction
+            const fifteenDaysAgo = new Date();
+            fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+
+            if (user.lastUsernameUpdated && user.lastUsernameUpdated > fifteenDaysAgo) {
+                const daysLeft = Math.ceil((new Date(user.lastUsernameUpdated).getTime() + (15 * 24 * 60 * 60 * 1000) - Date.now()) / (24 * 60 * 60 * 1000));
+                throw new ValidationError(`Username can only be updated once every 15 days. Please wait ${daysLeft} more days.`);
+            }
+
+            // Check if username is already taken
+            const existingUser = await prisma.user.findUnique({
+                where: { username: newUsername }
+            });
+
+            if (existingUser) {
+                throw new ValidationError('Username is already taken');
+            }
+
+            // Update username and timestamp
+            const updatedUser = await prisma.user.update({
+                where: { id: userId },
+                data: {
+                    username: newUsername,
+                    lastUsernameUpdated: new Date(),
+                    updatedAt: new Date()
+                }
+            });
+
+            // Publish event to user-service
+            try {
+                const rabbitmqService = require('../utils/rabbitmq');
+                await rabbitmqService.publishEvent('user.username_updated', {
+                    userId: user.id,
+                    email: user.email,
+                    oldUsername: user.username,
+                    newUsername: newUsername,
+                    updatedAt: new Date().toISOString()
+                });
+            } catch (mqError) {
+                logger.error('Failed to publish user.username_updated event to RabbitMQ', mqError);
+            }
+
+            logger.info(`Username updated for user: ${userId} from ${user.username} to ${newUsername}`);
+
+            return {
+                success: true,
+                message: 'Username updated successfully',
+                data: {
+                    username: updatedUser.username,
+                    lastUsernameUpdated: updatedUser.lastUsernameUpdated
+                }
+            };
+        } catch (error) {
+            logger.error('Error updating username:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initiate email update with OTP verification
+     */
+    async initiateEmailUpdate(userId, newEmail) {
+        try {
+            // Get current user
+            const user = await prisma.user.findUnique({
+                where: { id: userId }
+            });
+
+            if (!user) {
+                throw new AuthError('User not found');
+            }
+
+            // Check if email is the same
+            if (user.email.toLowerCase() === newEmail.toLowerCase()) {
+                throw new ValidationError('New email must be different from current email');
+            }
+
+            // Check if new email is already taken
+            const existingUser = await prisma.user.findUnique({
+                where: { email: newEmail.toLowerCase() }
+            });
+
+            if (existingUser) {
+                throw new ValidationError('Email is already in use');
+            }
+
+            // Generate and store OTP for email update
+            const otp = otpService.generateOTP();
+            await otpService.storeOTP(newEmail.toLowerCase(), otp, 'EMAIL_UPDATE', userId);
+
+            // Send OTP to new email
+            await emailService.sendOTPEmail(newEmail, otp, 'EMAIL_UPDATE', {
+                userName: user.username || user.firstName || 'User',
+                currentEmail: user.email
+            });
+
+            logger.info(`Email update OTP sent for user: ${userId} to new email: ${newEmail}`);
+
+            return {
+                success: true,
+                message: 'OTP sent to new email address. Please verify to complete email update.',
+                data: {
+                    newEmail: newEmail.toLowerCase(),
+                    nextStep: 'verify_email_update_otp'
+                }
+            };
+        } catch (error) {
+            logger.error('Error initiating email update:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Complete email update with OTP verification
+     */
+    async completeEmailUpdate(userId, newEmail, otp) {
+        try {
+            // Get current user
+            const user = await prisma.user.findUnique({
+                where: { id: userId }
+            });
+
+            if (!user) {
+                throw new AuthError('User not found');
+            }
+
+            // Verify OTP
+            const verification = await otpService.verifyOTP(newEmail.toLowerCase(), otp, 'EMAIL_UPDATE');
+
+            if (!verification.success) {
+                throw new ValidationError('Invalid or expired OTP');
+            }
+
+            // Check if new email is still available
+            const existingUser = await prisma.user.findUnique({
+                where: { email: newEmail.toLowerCase() }
+            });
+
+            if (existingUser) {
+                throw new ValidationError('Email is already in use');
+            }
+
+            // Update email and reset email verification status
+            const updatedUser = await prisma.user.update({
+                where: { id: userId },
+                data: {
+                    email: newEmail.toLowerCase(),
+                    emailVerified: true, // New email is verified through OTP process
+                    emailVerifiedAt: new Date(),
+                    updatedAt: new Date()
+                }
+            });
+
+            // Mark OTP as used
+            await otpService.markOTPAsUsed(verification.otpRecord.id);
+
+            // Publish events to user-service
+            try {
+                const rabbitmqService = require('../utils/rabbitmq');
+                await rabbitmqService.publishEvent('user.email_updated', {
+                    userId: user.id,
+                    oldEmail: user.email,
+                    newEmail: newEmail.toLowerCase(),
+                    emailVerified: true,
+                    updatedAt: new Date().toISOString()
+                });
+
+                // Also publish email verification event
+                await rabbitmqService.publishEvent('user.email_verified', {
+                    userId: user.id,
+                    email: newEmail.toLowerCase(),
+                    verifiedAt: new Date().toISOString()
+                });
+            } catch (mqError) {
+                logger.error('Failed to publish email update events to RabbitMQ', mqError);
+            }
+
+            logger.info(`Email updated for user: ${userId} from ${user.email} to ${newEmail}`);
+
+            return {
+                success: true,
+                message: 'Email updated successfully',
+                data: {
+                    email: updatedUser.email,
+                    emailVerified: updatedUser.emailVerified,
+                    emailVerifiedAt: updatedUser.emailVerifiedAt
+                }
+            };
+        } catch (error) {
+            logger.error('Error completing email update:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = new AuthService();

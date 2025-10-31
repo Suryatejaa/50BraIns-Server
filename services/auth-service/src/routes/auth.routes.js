@@ -41,6 +41,11 @@ router.post('/email-verification/verify', authenticate, otpController.verifyEmai
 // Legacy password change route (kept for backward compatibility)
 router.post('/change-password', authenticate, authController.changePassword);
 
+// Profile update routes (authenticated)
+router.put('/update/username', authenticate, authController.updateUsername);
+router.post('/update/email-initiate', authenticate, authController.initiateEmailUpdate);
+router.post('/update/email-complete', authenticate, authController.completeEmailUpdate);
+
 // 2FA routes (placeholder for future implementation)
 router.post('/2fa/setup', authenticate, authController.setup2FA);
 router.post('/2fa/verify', authenticate, authController.verify2FA);

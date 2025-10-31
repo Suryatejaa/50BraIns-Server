@@ -61,6 +61,7 @@ model User {
   updatedAt              DateTime?      @default(now()) @updatedAt @db.Timestamptz(6)
   lastLoginAt            DateTime?      @db.Timestamptz(6)
   lastActiveAt           DateTime?      @default(now()) @db.Timestamptz(6)
+  lastUsernameUpdated    DateTime?      @db.Timestamptz(6)
   isBanned               Boolean?       @default(false)
   banReason              String?
   banExpiresAt           DateTime?      @db.Timestamptz(6)
@@ -154,5 +155,6 @@ enum OTPPurpose {
   FORGOT_PASSWORD
   CHANGE_PASSWORD
   EMAIL_VERIFICATION
+  EMAIL_UPDATE
 }
 
