@@ -490,6 +490,8 @@ const syncEmailVerification = async (userId, verificationData) => {
         // Clear cached user data to ensure fresh data is returned
         const userCacheService = require('./userCacheService');
         await userCacheService.invalidatePattern(`user:*:${userId}`);
+        await userCacheService.invalidatePattern(`user:profile:${userId}`);
+
         logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
 
         logger.info(`Email verification synced successfully for user: ${userId}`);
@@ -524,6 +526,7 @@ const syncUsernameUpdate = async (userId, usernameData) => {
         // Clear cached user data to ensure fresh data is returned
         const userCacheService = require('./userCacheService');
         await userCacheService.invalidatePattern(`user:*:${userId}`);
+        await userCacheService.invalidatePattern(`user:profile:${userId}`);
         logger.info(`✅ [Cache] Invalidated cache for user after username update: ${userId}`);
 
         logger.info(`Username synced successfully for user: ${userId}`);
@@ -559,6 +562,7 @@ const syncEmailUpdate = async (userId, emailData) => {
         // Clear cached user data to ensure fresh data is returned
         const userCacheService = require('./userCacheService');
         await userCacheService.invalidatePattern(`user:*:${userId}`);
+        await userCacheService.invalidatePattern(`user:profile:${userId}`);
         logger.info(`✅ [Cache] Invalidated cache for user after email update: ${userId}`);
 
         logger.info(`Email synced successfully for user: ${userId}`);

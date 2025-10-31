@@ -58,6 +58,8 @@ const updateUserProfile = async (req, res) => {
 
     // Clear cached user data to ensure fresh data is returned
     await userCacheService.invalidatePattern(`user:*:${userId}`);
+    await userCacheService.invalidatePattern(`user:profile:${userId}`);
+
     logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
 
     res.status(StatusCodes.OK).json({
@@ -193,6 +195,8 @@ const updateSocialHandles = async (req, res) => {
 
     // Clear cached user data to ensure fresh data is returned
     await userCacheService.invalidatePattern(`user:*:${userId}`);
+    await userCacheService.invalidatePattern(`user:profile:${userId}`);
+
     logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
 
     res.status(StatusCodes.OK).json({
@@ -262,6 +266,7 @@ const updateUserSettings = async (req, res) => {
     logger.info(`Updating settings for user: ${userId}`);
 
     const updatedSettings = await userService.updateUserSettings(userId, settingsData);
+    await userCacheService.invalidatePattern(`user:profile:${userId}`);
 
     res.status(StatusCodes.OK).json({
         success: true,

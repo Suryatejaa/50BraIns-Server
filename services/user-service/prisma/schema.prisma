@@ -79,6 +79,7 @@ model User {
   updatedAt         DateTime @updatedAt
   lastLoginAt       DateTime?
   lastActiveAt      DateTime @default(now())
+  lastUsernameUpdated DateTime?
   
   // Ban information
   isBanned          Boolean  @default(false)
