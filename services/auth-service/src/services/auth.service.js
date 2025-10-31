@@ -613,8 +613,59 @@ class AuthService {
      */
     async changePassword(userId, currentPassword, newPassword) {
         try {
-            // Use the new OTP-based password change flow
-            return await this.initiatePasswordChange(userId, currentPassword);
+            // Authenticated password change using current password (no OTP)
+            if (!userId) {
+                throw new AuthError('User ID is required');
+            }
+
+            if (!currentPassword || !newPassword) {
+                throw new ValidationError('Current password and new password are required');
+            }
+
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user) {
+                throw new AuthError('User not found');
+            }
+
+            // Ensure user has a password (not social-only)
+            if (!user.password) {
+                throw new ValidationError('Password change not allowed for social or passwordless accounts');
+            }
+
+            const isValid = await bcrypt.compare(currentPassword, user.password);
+            if (!isValid) {
+                throw new ValidationError('Current password is incorrect');
+            }
+
+            // Hash new password and update
+            const hashed = await bcrypt.hash(newPassword, this.saltRounds);
+
+            await prisma.user.update({
+                where: { id: userId },
+                data: {
+                    password: hashed,
+                    updatedAt: new Date()
+                }
+            });
+
+            // Optionally publish an event for password change (non-sensitive)
+            try {
+                const rabbitmqService = require('../utils/rabbitmq');
+                await rabbitmqService.publishEvent('user.password_changed', {
+                    userId: user.id,
+                    email: user.email,
+                    changedAt: new Date().toISOString()
+                });
+            } catch (mqError) {
+                logger.warn('Failed to publish password_changed event to RabbitMQ', mqError);
+            }
+
+            logger.info(`Password changed for user: ${userId}`);
+
+            return {
+                success: true,
+                message: 'Password changed successfully'
+            };
         } catch (error) {
             logger.error('Error in change password:', error);
             console.error('DEBUG CHANGEPASSWORD ERROR:', error.message, error.stack);
