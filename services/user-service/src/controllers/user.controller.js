@@ -56,6 +56,10 @@ const updateUserProfile = async (req, res) => {
 
     const updatedUser = await userService.updateUser(userId, updateData);
 
+    // Clear cached user data to ensure fresh data is returned
+    await userCacheService.invalidatePattern(`user:*:${userId}`);
+    logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
+
     res.status(StatusCodes.OK).json({
         success: true,
         message: 'Profile updated successfully',
@@ -79,6 +83,10 @@ const updateProfilePicture = async (req, res) => {
     logger.info(`Updating profile picture for user: ${userId}`);
 
     const updatedUser = await userService.updateUser(userId, { profilePicture });
+
+    // Clear cached user data to ensure fresh data is returned
+    await userCacheService.invalidatePattern(`user:*:${userId}`);
+    logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
 
     res.status(StatusCodes.OK).json({
         success: true,
@@ -182,6 +190,10 @@ const updateSocialHandles = async (req, res) => {
         youtubeHandle,
         website
     });
+
+    // Clear cached user data to ensure fresh data is returned
+    await userCacheService.invalidatePattern(`user:*:${userId}`);
+    logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
 
     res.status(StatusCodes.OK).json({
         success: true,

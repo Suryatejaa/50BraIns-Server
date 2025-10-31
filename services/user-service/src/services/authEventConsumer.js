@@ -34,6 +34,8 @@ class AuthEventConsumer {
             await this.channel.bindQueue(this.queueName, this.exchangeName, 'user.registered');
             await this.channel.bindQueue(this.queueName, this.exchangeName, 'user.updated');
             await this.channel.bindQueue(this.queueName, this.exchangeName, 'user.deleted');
+            await this.channel.bindQueue(this.queueName, this.exchangeName, 'user.email_verified');
+            await this.channel.bindQueue(this.queueName, this.exchangeName, 'user.verified');
             console.log('✅ [Auth Event Consumer] Queue bindings established for auth events');
 
             this.isConnected = true;
@@ -100,6 +102,12 @@ class AuthEventConsumer {
                                 break;
                             case 'user.deleted':
                                 result = await eventHandlerService.handleUserDeleted(content);
+                                break;
+                            case 'user.email_verified':
+                                result = await eventHandlerService.handleEmailVerified(content);
+                                break;
+                            case 'user.verified':
+                                result = await eventHandlerService.handleUserVerified(content);
                                 break;
                             default:
                                 console.warn(`⚠️ [Auth Event Consumer] Unknown routing key: ${routingKey}`);

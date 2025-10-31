@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to {{appName}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .header-subtitle {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .welcome-title {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .message {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .otp-section {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e3f2fd 100%);
+            border: 2px solid #007bff;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .otp-label {
+            color: #007bff;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .otp-code {
+            font-size: 48px;
+            font-weight: bold;
+            color: #007bff;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+        }
+        
+        .otp-expiry {
+            color: #e74c3c;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .instructions h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .instructions p {
+            color: #856404;
+            font-size: 14px;
+        }
+        
+        .security-note {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .security-note p {
+            color: #155724;
+            font-size: 14px;
+            margin: 0;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .footer-links {
+            margin-bottom: 20px;
+        }
+        
+        .footer-links a {
+            color: #007bff;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 14px;
+        }
+        
+        .copyright {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 10px;
+                border-radius: 8px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .otp-code {
+                font-size: 36px;
+                letter-spacing: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">{{appName}}</div>
+            <div class="header-subtitle">Welcome to the Community!</div>
+        </div>
+        
+        <div class="content">
+            <h1 class="welcome-title">Welcome, {{userName}}! 🎉</h1>
+            
+            <p class="message">
+                Thank you for joining {{appName}}! We're excited to have you as part of our community. 
+                To complete your registration and activate your account, please verify your email address.
+            </p>
+            
+            <div class="otp-section">
+                <div class="otp-label">Your Verification Code</div>
+                <div class="otp-code">{{otp}}</div>
+                <div class="otp-expiry">⏰ Expires in 10 minutes</div>
+            </div>
+            
+            <div class="instructions">
+                <h4>How to verify:</h4>
+                <p>1. Return to the registration page</p>
+                <p>2. Enter the 6-digit code above</p>
+                <p>3. Click "Verify Email" to complete your registration</p>
+            </div>
+            
+            <div class="security-note">
+                <p>🔒 If you didn't create an account with {{appName}}, please ignore this email.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <div class="footer-links">
+                <a href="mailto:{{supportEmail}}">Support</a>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Terms of Service</a>
+            </div>
+            <div class="copyright">
+                &copy; 2025 {{companyName}}. All rights reserved.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth.middleware');
 const { rateLimiter } = require('../middleware/security.middleware');
 const authController = require('../controllers/auth.controller');
+const otpController = require('../controllers/otp.controller');
 const simpleController = require('../controllers/simple.controller');
 
 // Test route to debug socket hang up
@@ -12,12 +13,32 @@ router.post('/simple-register', simpleController.simpleRegister);
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/refresh', authController.refresh);
-router.post('/forgot-password', authController.requestPasswordReset);
+
+// OTP-based authentication routes
+router.post('/verify-registration-otp', otpController.verifyRegistrationOTP);
+router.post('/otp-login/initiate', otpController.initiateOTPLogin);
+router.post('/otp-login/complete', otpController.completeOTPLogin);
+
+// Password reset with OTP
+router.post('/forgot-password', otpController.requestPasswordReset);
+router.post('/reset-password', otpController.resetPassword);
+
+// Legacy routes (kept for backward compatibility)
 router.get('/verify-email/:token', authController.verifyEmail);
 
 // Authenticated routes
 router.post('/logout', authenticate, authController.logout);
 router.post('/logout-all', authenticate, authController.logoutAll);
+
+// Password change with OTP (authenticated)
+router.post('/change-password/initiate', authenticate, otpController.initiatePasswordChange);
+router.post('/change-password/complete', authenticate, otpController.completePasswordChange);
+
+// Email verification with OTP (authenticated)
+router.post('/email-verification/send', authenticate, otpController.sendEmailVerificationOTP);
+router.post('/email-verification/verify', authenticate, otpController.verifyEmailOTP);
+
+// Legacy password change route (kept for backward compatibility)
 router.post('/change-password', authenticate, authController.changePassword);
 
 // 2FA routes (placeholder for future implementation)

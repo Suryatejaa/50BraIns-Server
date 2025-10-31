@@ -110,6 +110,25 @@ model AdminLog {
   @@map("authAdminLogs")
 }
 
+model OTPRecord {
+  id        String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  email     String
+  otpHash   String
+  purpose   OTPPurpose
+  userId    String?
+  expiresAt DateTime  @db.Timestamptz(6)
+  isUsed    Boolean   @default(false)
+  usedAt    DateTime? @db.Timestamptz(6)
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([email, purpose], map: "idx_otp_email_purpose")
+  @@index([expiresAt], map: "idx_otp_expires_at")
+  @@index([isUsed], map: "idx_otp_is_used")
+  @@map("authOTPRecords")
+}
+
 
 enum roles {
   USER
@@ -127,5 +146,13 @@ enum Status {
   INACTIVE
   SUSPENDED
   BANNED
+}
+
+enum OTPPurpose {
+  REGISTER
+  LOGIN
+  FORGOT_PASSWORD
+  CHANGE_PASSWORD
+  EMAIL_VERIFICATION
 }
 

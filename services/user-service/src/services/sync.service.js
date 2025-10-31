@@ -60,6 +60,11 @@ const syncUserFromAuthService = async (userData) => {
         // Update search score based on profile completeness
         await updateSearchScore(userData.id);
 
+        // Clear cached user data to ensure fresh data is returned
+        const userCacheService = require('./userCacheService');
+        await userCacheService.invalidatePattern(`user:*:${userData.id}`);
+        logger.info(`✅ [Cache] Invalidated cache for user: ${userData.id}`);
+
         logger.info(`User synced for user ${userData.id}`);
         return { success: true, userId: userData.id };
     } catch (error) {
@@ -465,6 +470,40 @@ const syncUsersByroles = async (roles) => {
     }
 };
 
+/**
+ * Sync email verification status from auth-service
+ */
+const syncEmailVerification = async (userId, verificationData) => {
+    try {
+        logger.info(`Syncing email verification for user: ${userId}`);
+
+        // Update user's email verification status
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                emailVerified: verificationData.emailVerified,
+                emailVerifiedAt: verificationData.emailVerifiedAt ? new Date(verificationData.emailVerifiedAt) : null,
+                updatedAt: new Date()
+            }
+        });
+
+        // Clear cached user data to ensure fresh data is returned
+        const userCacheService = require('./userCacheService');
+        await userCacheService.invalidatePattern(`user:*:${userId}`);
+        logger.info(`✅ [Cache] Invalidated cache for user: ${userId}`);
+
+        logger.info(`Email verification synced successfully for user: ${userId}`);
+        return {
+            success: true,
+            user: updatedUser,
+            message: 'Email verification status updated successfully'
+        };
+    } catch (error) {
+        logger.error(`Error syncing email verification for user ${userId}:`, error);
+        throw error;
+    }
+};
+
 module.exports = {
     syncUserFromAuthService,
     createUserCache,
@@ -475,5 +514,6 @@ module.exports = {
     syncSingleUserFromAuthService,
     getSyncStatus,
     updateSearchScore,
-    syncUsersByroles
+    syncUsersByroles,
+    syncEmailVerification
 };

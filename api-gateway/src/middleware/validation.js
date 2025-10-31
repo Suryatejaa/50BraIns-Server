@@ -95,12 +95,15 @@ const validationSchemas = {
 
     "POST:/api/auth/reset-password": {
         body: Joi.object({
-            token: Joi.string().required().messages({
-                "any.required": "Reset token is required",
+            email: commonSchemas.email,
+            otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+                "string.length": "OTP must be exactly 6 digits",
+                "string.pattern.base": "OTP must contain only numbers",
+                "any.required": "OTP is required",
             }),
-            password: commonSchemas.password.required(),
+            newPassword: commonSchemas.password.required(),
             confirmPassword: Joi.string()
-                .valid(Joi.ref("password"))
+                .valid(Joi.ref("newPassword"))
                 .required()
                 .messages({
                     "any.only": "Password confirmation must match password",
@@ -108,10 +111,49 @@ const validationSchemas = {
         }),
     },
 
-    "POST:/api/auth/change-password": {
+    // OTP-based authentication routes
+    "POST:/api/auth/verify-registration-otp": {
+        body: Joi.object({
+            email: commonSchemas.email,
+            otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+                "string.length": "OTP must be exactly 6 digits",
+                "string.pattern.base": "OTP must contain only numbers",
+                "any.required": "OTP is required",
+            }),
+        }),
+    },
+
+    "POST:/api/auth/otp-login/initiate": {
+        body: Joi.object({
+            email: commonSchemas.email,
+        }),
+    },
+
+    "POST:/api/auth/otp-login/complete": {
+        body: Joi.object({
+            email: commonSchemas.email,
+            otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+                "string.length": "OTP must be exactly 6 digits",
+                "string.pattern.base": "OTP must contain only numbers",
+                "any.required": "OTP is required",
+            }),
+        }),
+    },
+
+    "POST:/api/auth/change-password/initiate": {
         body: Joi.object({
             currentPassword: Joi.string().required().messages({
                 "any.required": "Current password is required",
+            })
+        }),
+    },
+
+    "POST:/api/auth/change-password/complete": {
+        body: Joi.object({
+            otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+                "string.length": "OTP must be exactly 6 digits",
+                "string.pattern.base": "OTP must contain only numbers",
+                "any.required": "OTP is required",
             }),
             newPassword: commonSchemas.password.required(),
             confirmPassword: Joi.string()

@@ -17,6 +17,7 @@ const logger = require('./utils/logger.utils');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
+// const internalRoutes = require('./routes/internal.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -140,8 +141,8 @@ const speedLimiter = NODE_ENV === 'test' ? (req, res, next) => next() : slowDown
     maxDelayMs: 20000, // Maximum delay of 20 seconds
 });
 
-app.use(generalLimiter);
-app.use(speedLimiter);
+// app.use(generalLimiter);
+// app.use(speedLimiter);
 
 // Health check (before auth routes to avoid rate limiting)
 app.get('/health', (req, res) => {
@@ -173,7 +174,10 @@ app.get('/health/database', async (req, res) => {
 });
 
 // API Routes - Gateway strips /api/auth prefix, so mount at root
-app.use('/', authLimiter, authRoutes);
+app.use('/', authRoutes);
+
+// Internal API routes for service-to-service communication
+// app.use('/internal', internalRoutes);
 
 // API Documentation route
 app.get('/api-docs', (req, res) => {

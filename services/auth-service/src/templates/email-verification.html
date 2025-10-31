@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - {{appName}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+            padding: 20px;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .header-subtitle {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .title {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .message {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .otp-section {
+            background: linear-gradient(135deg, #f0fff4 0%, #dcf8e8 100%);
+            border: 2px solid #00b894;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .otp-label {
+            color: #00b894;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .otp-code {
+            font-size: 48px;
+            font-weight: bold;
+            color: #00b894;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+        }
+        
+        .otp-expiry {
+            color: #00a085;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .verification-steps {
+            background: #e8f4fd;
+            border: 1px solid #b3d9f7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .verification-steps h4 {
+            color: #0c5aa6;
+            margin-bottom: 10px;
+        }
+        
+        .verification-steps p {
+            color: #0c5aa6;
+            font-size: 14px;
+        }
+        
+        .benefits {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .benefits h4 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .benefit-icon {
+            color: #00b894;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .footer-links {
+            margin-bottom: 20px;
+        }
+        
+        .footer-links a {
+            color: #00b894;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 14px;
+        }
+        
+        .copyright {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 10px;
+                border-radius: 8px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .otp-code {
+                font-size: 36px;
+                letter-spacing: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">{{appName}}</div>
+            <div class="header-subtitle">Email Verification Required</div>
+        </div>
+        
+        <div class="content">
+            <h1 class="title">Verify Your Email Address ✉️</h1>
+            
+            <p class="message">
+                Hello {{userName}},<br><br>
+                To ensure the security of your {{appName}} account and enable all features, 
+                please verify your email address using the verification code below.
+            </p>
+            
+            <div class="otp-section">
+                <div class="otp-label">Email Verification Code</div>
+                <div class="otp-code">{{otp}}</div>
+                <div class="otp-expiry">⏰ Expires in 10 minutes</div>
+            </div>
+            
+            <div class="verification-steps">
+                <h4>How to verify your email:</h4>
+                <p>1. Go to your account settings or verification page</p>
+                <p>2. Enter the 6-digit verification code above</p>
+                <p>3. Click "Verify Email" to complete the process</p>
+            </div>
+            
+            <div class="benefits">
+                <h4>Why verify your email?</h4>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Receive important account notifications</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Reset your password if needed</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Access all platform features</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Enhanced account security</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <div class="footer-links">
+                <a href="mailto:{{supportEmail}}">Need Help?</a>
+                <a href="#">Account Settings</a>
+                <a href="#">Support</a>
+            </div>
+            <div class="copyright">
+                &copy; 2025 {{companyName}}. All rights reserved.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

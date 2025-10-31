@@ -89,38 +89,51 @@ const register = catchAsync(async (req, res) => {
         return res.status(500).json({ success: false, error: 'User registration failed' });
     }
 
-    logger.info(`User registered successfully: ${user.email}`, {
-        userId: user.id,
-        email: user.email,
-        roles: user.roles,
+    logger.info(`User registered successfully: ${user.user?.email}`, {
+        userId: user.user?.id,
+        email: user.user?.email,
+        roles: user.user?.roles,
         ip: req.ip
     });
 
-    // Cookie settings that support cross-origin development
-    const isProduction = process.env.NODE_ENV === 'production';
-    const cookieOptions = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
-        domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
-    };
+    // Check if this is the new OTP flow (no tokens) or legacy flow (with tokens)
+    if (user.tokens) {
+        // Legacy flow - set cookies and return tokens
+        const isProduction = process.env.NODE_ENV === 'production';
+        const cookieOptions = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
+        };
 
-    res.cookie('refreshToken', user.tokens.refreshToken, {
-        ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
+        res.cookie('refreshToken', user.tokens.refreshToken, {
+            ...cookieOptions,
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
 
-    // Set access token as cookie for easier API testing (Postman, etc.)
-    res.cookie('accessToken', user.tokens.accessToken, {
-        ...cookieOptions,
-        maxAge: 15 * 60 * 1000 // 15 minutes (same as JWT expiry)
-    });
+        res.cookie('accessToken', user.tokens.accessToken, {
+            ...cookieOptions,
+            maxAge: 15 * 60 * 1000 // 15 minutes
+        });
 
-    res.status(201).json({
-        success: true,
-        message: 'User registered successfully',
-        data: user
-    });
+        res.status(201).json({
+            success: true,
+            message: 'User registered successfully',
+            data: user
+        });
+    } else {
+        // New OTP flow - no tokens, user needs to verify email
+        res.status(201).json({
+            success: true,
+            message: user.message,
+            data: {
+                user: user.user,
+                otpSent: user.otpSent,
+                nextStep: user.nextStep
+            }
+        });
+    }
 });
 
 /**

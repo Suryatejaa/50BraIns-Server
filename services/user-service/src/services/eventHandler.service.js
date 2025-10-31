@@ -79,6 +79,46 @@ class EventHandlerService {
                 throw error;
             }
         });
+
+        // Handle email verification events
+        this.handlers.set('user.email_verified', async (eventData) => {
+            try {
+                console.log('🔄 [Event Handler] Processing user.email_verified event:', eventData);
+
+                // Update user's email verification status in user service
+                const { syncEmailVerification } = require('./sync.service');
+                const result = await syncEmailVerification(eventData.userId, {
+                    emailVerified: true,
+                    emailVerifiedAt: eventData.verifiedAt
+                });
+
+                console.log('✅ [Event Handler] Email verification status updated successfully:', result);
+                return { success: true, message: 'Email verification status updated successfully' };
+            } catch (error) {
+                console.error('❌ [Event Handler] Error processing user.email_verified event:', error);
+                throw error;
+            }
+        });
+
+        // Handle user verification events (registration completion)
+        this.handlers.set('user.verified', async (eventData) => {
+            try {
+                console.log('🔄 [Event Handler] Processing user.verified event:', eventData);
+
+                // Update user's verification status and email verification in user service
+                const { syncEmailVerification } = require('./sync.service');
+                const result = await syncEmailVerification(eventData.userId, {
+                    emailVerified: true,
+                    emailVerifiedAt: eventData.verifiedAt
+                });
+
+                console.log('✅ [Event Handler] User verification status updated successfully:', result);
+                return { success: true, message: 'User verification status updated successfully' };
+            } catch (error) {
+                console.error('❌ [Event Handler] Error processing user.verified event:', error);
+                throw error;
+            }
+        });
     }
 
     async handleEvent(eventData, routingKey) {
@@ -118,6 +158,14 @@ class EventHandlerService {
 
     async handleUserDeleted(userData) {
         return this.handleEvent(userData, 'user.deleted');
+    }
+
+    async handleEmailVerified(userData) {
+        return this.handleEvent(userData, 'user.email_verified');
+    }
+
+    async handleUserVerified(userData) {
+        return this.handleEvent(userData, 'user.verified');
     }
 }
 
