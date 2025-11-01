@@ -1,3 +1,7 @@
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('REPUTATION-SERVICE');
+
 const express = require('express');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -79,7 +83,7 @@ app.get('/health', async (req, res) => {
 
         // Check RabbitMQ connection
         const mqStatus = eventProcessor.isConnected ? 'connected' : 'disconnected';
-        
+
         res.json({
             success: true,
             service: 'reputation-service',
@@ -266,6 +270,9 @@ async function startServer() {
             logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
             logger.info(`💎 Service URL: http://localhost:${PORT}`);
             logger.info('📈 Ready to process reputation events!');
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('Reputation Service', PORT);
         });
 
     } catch (error) {

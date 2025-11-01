@@ -1,3 +1,7 @@
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('GIG-SERVICE');
+
 const express = require('express');
 const dotenv = require('dotenv');
 const helmet = require('helmet');
@@ -213,6 +217,9 @@ async function startServer() {
             console.log(`📊 Health check: http://localhost:${PORT}/health`);
             console.log(`📝 API docs: http://localhost:${PORT}/`);
             console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('Gig Service', PORT);
 
             // Start Event Consumers
             try {

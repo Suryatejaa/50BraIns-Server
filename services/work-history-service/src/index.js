@@ -1,3 +1,9 @@
+require('dotenv').config();
+
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('work-history-service');
+
 const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -207,6 +213,9 @@ const startServer = async () => {
             Logger.info(`🔨 Work History Service running on port ${PORT}`);
             Logger.info(`📊 Source of truth for creator achievements and portfolio tracking`);
             Logger.info(`🌐 Health check: http://localhost:${PORT}/health`);
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('Work History Service', PORT);
         });
 
     } catch (error) {

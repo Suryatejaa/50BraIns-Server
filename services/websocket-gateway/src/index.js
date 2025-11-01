@@ -7,6 +7,10 @@
 // Load environment variables from .env file
 require('dotenv').config();
 
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('websocket-gateway');
+
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
@@ -89,6 +93,9 @@ class WebSocketGatewayService {
             console.log(`🔌 WebSocket: ws://localhost:${this.port}/ws`);
             console.log(`🌐 HTTP: http://localhost:${this.port}`);
             console.log(`📊 Health: http://localhost:${this.port}/health`);
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('WebSocket Gateway', this.port);
         });
 
         // Initialize WebSocket and RabbitMQ AFTER server starts

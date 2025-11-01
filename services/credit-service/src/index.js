@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('CREDIT-SERVICE');
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -137,6 +142,9 @@ const startServer = async () => {
 🔗 Health Check: http://localhost:${PORT}/health
 📊 Test Endpoint: http://localhost:${PORT}/api/credits/test
             `);
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('Credit Service', PORT);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

@@ -1,3 +1,9 @@
+require('dotenv').config();
+
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('notification-service');
+
 const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -265,6 +271,9 @@ const server = app.listen(PORT, async () => {
     logger.info(`📬 Notification Service running on port ${PORT}`);
     logger.info(`🌍 Environment: ${process.env.NODE_ENV}`);
     logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
+
+    // Mark end of startup phase for console compression
+    console.markStartupEnd('Notification Service', PORT);
 
     // Initialize all services
     await initializeServices();

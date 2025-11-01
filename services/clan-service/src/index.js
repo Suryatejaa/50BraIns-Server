@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('CLAN-SERVICE');
+
 const express = require('express');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -57,6 +62,9 @@ async function startServer() {
             console.log(`🎯 Gig Sharing: /clans/:id/share-gig`);
             console.log(`📊 Reputation: Automatic updates`);
             console.log(`🔌 WebSocket: ws://localhost:${PORT}/ws?userId=XXX&clanId=XXX`);
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('Clan Service', PORT);
         });
 
         // Initialize WebSocket service

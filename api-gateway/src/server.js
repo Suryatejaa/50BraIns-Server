@@ -1,3 +1,7 @@
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('api-gateway');
+
 const cluster = require('cluster');
 const os = require('os');
 const app = require('./app');
@@ -56,6 +60,9 @@ if (config.enableClustering && cluster.isMaster && config.nodeEnv === 'productio
         if (config.enableMonitoring) {
             logger.info(`📊 Monitoring available at: http://localhost:${PORT}${config.monitoringPath}`);
         }
+
+        // Mark end of startup phase for console compression
+        console.markStartupEnd('API Gateway', PORT);
 
         // Initialize WebSocket proxy
         webSocketProxy.initialize(server);

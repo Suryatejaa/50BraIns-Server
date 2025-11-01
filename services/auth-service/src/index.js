@@ -11,6 +11,10 @@ const hpp = require('hpp');
 const rabbitmqService = require('./utils/rabbitmq');
 require('dotenv').config();
 
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('auth-service');
+
 // Import configurations
 const { connectRedis } = require('./config/redis');
 const logger = require('./utils/logger.utils');
@@ -283,6 +287,9 @@ const startServer = async () => {
             if (NODE_ENV === 'development') {
                 logger.info(`🔐 Ready for authentication requests!`);
             }
+
+            // Mark end of startup phase for console compression
+            console.markStartupEnd('Auth Service', PORT);
         });
 
         console.log('🔧 Starting RabbitMQ connection...');

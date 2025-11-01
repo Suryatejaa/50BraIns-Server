@@ -2,6 +2,11 @@
 
 
 require('dotenv').config();
+
+// Setup global console compression (must be early in startup)
+const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+setupGlobalConsoleCompression('user-service');
+
 const express = require('express');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -123,6 +128,9 @@ app.use(errorHandler);
 const server = app.listen(PORT, async () => {
     console.log(`✅ User Service running on port ${PORT}`);
     logger.info(`User Service running on port ${PORT}`);
+
+    // Mark end of startup phase for console compression
+    console.markStartupEnd('User Service', PORT);
 
     // Initialize cache service
     try {
