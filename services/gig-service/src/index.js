@@ -1,5 +1,5 @@
 // Setup global console compression (must be early in startup)
-const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+const { setupGlobalConsoleCompression } = require('../src/utils/globalConsoleLogger');
 setupGlobalConsoleCompression('GIG-SERVICE');
 
 const express = require('express');

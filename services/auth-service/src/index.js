@@ -12,7 +12,7 @@ const rabbitmqService = require('./utils/rabbitmq');
 require('dotenv').config();
 
 // Setup global console compression (must be early in startup)
-const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+const {setupGlobalConsoleCompression} = require('../src/utils/globalConsoleLogger')
 setupGlobalConsoleCompression('auth-service');
 
 // Import configurations

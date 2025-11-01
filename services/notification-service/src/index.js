@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 // Setup global console compression (must be early in startup)
-const { setupGlobalConsoleCompression } = require('../../../utils/globalConsoleLogger');
+const { setupGlobalConsoleCompression } = require('../src/utils/globalConsoleLogger');
 setupGlobalConsoleCompression('notification-service');
 
 const express = require('express');
