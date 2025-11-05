@@ -109,7 +109,6 @@ class GigChatController {
                     error: 'Application not found'
                 });
             }
-
             // Find existing chat for this application
             let chat = await prisma.gigChat.findUnique({
                 where: { applicationId: applicationId },
@@ -149,23 +148,45 @@ class GigChatController {
                 });
             }
 
-            // Create chat if it doesn't exist
+            // Create chat if it doesn't exist (use upsert to handle race conditions)
             if (!chat) {
-                chat = await prisma.gigChat.create({
-                    data: {
-                        gigId: application.gigId,
-                        applicationId: application.id,
-                        gigOwnerId: application.gig.postedById,
-                        applicantId: application.applicantId,
-                        isActive: application.status !== 'CLOSED'
-                    },
-                    include: {
-                        messages: {
-                            orderBy: { createdAt: 'asc' }
-                            // Get ALL messages, no limit
+                try {
+                    chat = await prisma.gigChat.upsert({
+                        where: { applicationId: applicationId },
+                        update: {
+                            // If chat exists, just update activity status
+                            isActive: application.status !== 'CLOSED'
+                        },
+                        create: {
+                            gigId: application.gigId,
+                            applicationId: application.id,
+                            gigOwnerId: application.gig.postedById,
+                            applicantId: application.applicantId,
+                            isActive: application.status !== 'CLOSED'
+                        },
+                        include: {
+                            messages: {
+                                orderBy: { createdAt: 'asc' }
+                                // Get ALL messages, no limit
+                            }
                         }
+                    });
+                } catch (upsertError) {
+                    // If upsert fails, try to find the existing chat one more time
+                    console.log('🔄 [ChatController] Upsert failed, trying to find existing chat:', upsertError.message);
+                    chat = await prisma.gigChat.findUnique({
+                        where: { applicationId: applicationId },
+                        include: {
+                            messages: {
+                                orderBy: { createdAt: 'asc' }
+                            }
+                        }
+                    });
+
+                    if (!chat) {
+                        throw upsertError; // Re-throw if still can't find chat
                     }
-                });
+                }
             }
 
             // Mark messages as read for current user
@@ -194,7 +215,6 @@ class GigChatController {
                 'Expires': '0',
                 'Last-Modified': new Date().toUTCString()
             });
-
             res.json({
                 success: true,
                 data: {
@@ -202,7 +222,7 @@ class GigChatController {
                         id: chat.id,
                         gigId: chat.gigId,
                         applicationId: chat.applicationId,
-                        status: chat.isActive ? 'open' : 'closed',
+                        status: application.status !== 'CLOSED' ? 'open' : 'closed',
                         userRole: isGigOwner ? 'gig_owner' : 'applicant',
                         subject: `Application Discussion: ${application.gig.title}`,
                         participants: {

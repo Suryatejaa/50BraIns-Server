@@ -464,6 +464,42 @@ class ApplicationController {
         }
     };
 
+    // Helper method to calculate delivery time
+    calculateDeliveryTime = (gig) => {
+        try {
+            if (!gig.createdAt) return 'Unknown';
+
+            const createdDate = new Date(gig.createdAt);
+            const completedDate = new Date();
+            const diffMs = completedDate - createdDate;
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 1) return 'Same day';
+            if (diffDays <= 3) return 'Within 3 days';
+            if (diffDays <= 7) return 'Within 1 week';
+            if (diffDays <= 14) return 'Within 2 weeks';
+            return `${diffDays} days`;
+        } catch (error) {
+            console.error('Error calculating delivery time:', error);
+            return 'Unknown';
+        }
+    };
+
+    // Helper method to determine if delivery was on time
+    calculateOnTimeDelivery = (gig) => {
+        try {
+            if (!gig.deadline) return true; // No deadline means always on time
+
+            const deadline = new Date(gig.deadline);
+            const completedDate = new Date();
+
+            return completedDate <= deadline;
+        } catch (error) {
+            console.error('Error calculating on-time delivery:', error);
+            return true; // Default to true if calculation fails
+        }
+    };
+
     //=================================================================
     //======================== APPLICATION CONTROLLER =========================
     //=================================================================
