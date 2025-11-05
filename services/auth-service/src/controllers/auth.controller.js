@@ -73,7 +73,7 @@ const register = catchAsync(async (req, res) => {
         ip: req.ip,
         userAgent: req.get('User-Agent')
     });
-
+    console.log('Register request body:', sanitizedBody);
     // Validate input
     const { error, value } = registerSchema.validate(req.body);
     if (error) {

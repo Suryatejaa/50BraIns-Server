@@ -73,7 +73,12 @@ const validationSchemas = {
                 .default(["USER"]),
             instagramHandle: Joi.string().allow('').optional().messages({
                 'string.base': 'Instagram handle must be a string'
-            })
+            }),
+            isAgreedToTermsAndRefundPolicy: Joi.boolean().valid(true).required().messages({
+                'any.only': 'You must agree to the Terms of Service and Refund Policy to create an account',
+                'any.required': 'Agreement to Terms of Service and Refund Policy is required',
+
+            }),
         }),
     },
 
