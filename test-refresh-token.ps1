@@ -2,7 +2,7 @@
 Write-Host "Testing Railway Refresh Token Mechanism..." -ForegroundColor Green
 
 # Test URLs - Update these with your actual Railway URLs
-$API_GATEWAY_URL = "https://api-gateway-production-c8bc.up.railway.app"
+$API_GATEWAY_URL = "https://api.50brains.in"
 $AUTH_SERVICE_URL = "https://auth-service-production-XXXX.up.railway.app"
 
 Write-Host "`n1. Testing CORS preflight for refresh endpoint..." -ForegroundColor Cyan

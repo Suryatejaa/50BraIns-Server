@@ -108,7 +108,7 @@ const register = catchAsync(async (req, res) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
+            domain: process.env.NODE_ENV === 'production' ? '.50brains.in' : undefined
         };
 
         res.cookie('refreshToken', user.tokens.refreshToken, {
@@ -162,9 +162,9 @@ const login = catchAsync(async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
-        domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
+        secure: isProduction,  // HTTPS only in production
+        sameSite: isProduction ? 'none' : 'lax',  // Allow cross-site in production
+        domain: isProduction ? '.50brains.in' : undefined  // Share cookies across 50brains.in subdomains
     };
 
     // Set refresh token as httpOnly cookie
@@ -222,7 +222,7 @@ const refresh = catchAsync(async (req, res) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
-        domain: process.env.NODE_ENV === 'production' ? '.up.railway.app' : undefined
+        domain: process.env.NODE_ENV === 'production' ? '.50brains.in' : undefined  // ✅ Share across subdomains
     };
 
     // Set new refresh token as httpOnly cookie

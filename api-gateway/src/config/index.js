@@ -20,9 +20,13 @@ const config = {
                 'http://localhost:3001',
                 'https://50brains.com',
                 'https://www.50brains.com',
-                'https://app.50brains.com'
+                'https://app.50brains.com',
+                'https://50brains.in',
+                'https://www.50brains.in',
+                'https://app.50brains.in',
+                'https://api.50brains.in'
             ],
-        credentials: process.env.CORS_CREDENTIALS === 'true',
+        credentials: process.env.CORS_CREDENTIALS !== 'false', // Default to true unless explicitly disabled
         allowNoOrigin: process.env.CORS_ALLOW_NO_ORIGIN === 'true',
         methods: process.env.CORS_METHODS
             ? process.env.CORS_METHODS.split(',').map(method => method.trim())
