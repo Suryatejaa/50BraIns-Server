@@ -1583,10 +1583,10 @@ class ApplicationController {
             console.log('reviewSubmission updated application status based on submission review');
 
             // Invalidate related caches after application rejection
-            await this.cache.invalidateApplication(id, application.gigId, application.applicantId);
-            await this.cache.invalidatePattern(`received_applications:${application.gig.postedById}:*`);
-            await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
-            await this.cache.invalidateGig(application.gigId, application.gig.postedById);
+            await this.cache.invalidateApplication(id, submission.gigId, submission.submittedById);
+            await this.cache.invalidatePattern(`received_applications:${submission.gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${submission.submittedById}:*`);
+            await this.cache.invalidateGig(submission.gigId, submission.gig.postedById);
 
 
             // Publish events
