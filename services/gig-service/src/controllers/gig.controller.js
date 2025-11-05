@@ -591,6 +591,26 @@ class GigController {
             await this.cache.invalidateUserGigs(id);
             await this.cache.clearSearchCaches(); // Clear search results since new gig affects them
 
+            // Specifically invalidate user posted gigs cache for immediate visibility
+            await this.cache.invalidatePattern(`user_posted_gigs:${id}:*`);
+
+            // Force delete specific cache patterns for getMyPostedGigs
+            try {
+                const postedGigsCachePatterns = [
+                    `user_posted_gigs:${id}:all_nosearch_all_all_1_20_createdAt_desc`,
+                    `user_posted_gigs:${id}:OPEN_nosearch_all_all_1_20_createdAt_desc`,
+                    `user_posted_gigs:${id}:all_nosearch_all_all_1_10_createdAt_desc`,
+                    `user_posted_gigs:${id}:OPEN_nosearch_all_all_1_10_createdAt_desc`
+                ];
+
+                for (const cacheKey of postedGigsCachePatterns) {
+                    await this.cache.cacheManager.del(cacheKey);
+                }
+                console.log(`🗑️ Force deleted user posted gigs cache patterns for user: ${id} (create)`);
+            } catch (error) {
+                console.error('❌ Error force deleting user posted gigs cache:', error);
+            }
+
             // Publish event
             await this.publishEvent('gig_created', {
                 gigId: gig.id,

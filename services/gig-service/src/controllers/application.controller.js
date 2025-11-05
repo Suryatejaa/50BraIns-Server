@@ -890,6 +890,24 @@ class ApplicationController {
             await this.cache.invalidatePattern(`received_applications:${gig.postedById}:*`);
             await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
 
+            // Force delete specific user applications cache to ensure immediate refresh
+            try {
+                // Generate and delete common cache key patterns for getMyApplications
+                const userCachePatterns = [
+                    `user_applications:${application.applicantId}:all_nosearch_1_20_appliedAt_desc`,
+                    `user_applications:${application.applicantId}:PENDING_nosearch_1_20_appliedAt_desc`,
+                    `user_applications:${application.applicantId}:all_nosearch_1_10_appliedAt_desc`,
+                    `user_applications:${application.applicantId}:PENDING_nosearch_1_10_appliedAt_desc`
+                ];
+
+                for (const cacheKey of userCachePatterns) {
+                    await this.cache.cacheManager.del(cacheKey);
+                }
+                console.log(`🗑️ Force deleted user applications cache patterns for user: ${application.applicantId}`);
+            } catch (error) {
+                console.error('❌ Error force deleting user applications cache:', error);
+            }
+
             res.status(201).json({
                 success: true,
                 message: 'Application submitted successfully',
@@ -1618,11 +1636,21 @@ class ApplicationController {
             }
             console.log('reviewSubmission updated application status based on submission review');
 
-            // Invalidate related caches after application rejection
+            // Invalidate related caches after submission review
             await this.cache.invalidateApplication(id, submission.gigId, submission.submittedById);
             await this.cache.invalidatePattern(`received_applications:${submission.gig.postedById}:*`);
             await this.cache.invalidatePattern(`user_applications:${submission.submittedById}:*`);
             await this.cache.invalidateGig(submission.gigId, submission.gig.postedById);
+
+            // Invalidate gig submissions cache for the gig owner
+            await this.cache.invalidatePattern(`gig_submissions:${submission.gigId}:*`);
+            const gigSubmissionsCacheKey = `gig_submissions:${submission.gigId}:${submission.gig.postedById}`;
+            try {
+                await this.cache.cacheManager.del(gigSubmissionsCacheKey);
+                console.log(`🗑️ Force deleted gig submissions cache after review: ${gigSubmissionsCacheKey}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig submissions cache:', error);
+            }
 
 
             // Publish events

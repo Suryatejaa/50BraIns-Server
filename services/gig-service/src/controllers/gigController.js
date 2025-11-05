@@ -456,6 +456,26 @@ class GigController {
             await this.cache.invalidateUserGigs(userId);
             await this.cache.clearSearchCaches(); // Clear search caches as new gig is published
 
+            // Specifically invalidate user posted gigs cache
+            await this.cache.invalidatePattern(`user_posted_gigs:${userId}:*`);
+
+            // Force delete specific cache patterns for getMyPostedGigs
+            try {
+                const postedGigsCachePatterns = [
+                    `user_posted_gigs:${userId}:all_nosearch_all_all_1_20_createdAt_desc`,
+                    `user_posted_gigs:${userId}:OPEN_nosearch_all_all_1_20_createdAt_desc`,
+                    `user_posted_gigs:${userId}:all_nosearch_all_all_1_10_createdAt_desc`,
+                    `user_posted_gigs:${userId}:OPEN_nosearch_all_all_1_10_createdAt_desc`
+                ];
+
+                for (const cacheKey of postedGigsCachePatterns) {
+                    await this.cache.cacheManager.del(cacheKey);
+                }
+                console.log(`🗑️ Force deleted user posted gigs cache patterns for user: ${userId}`);
+            } catch (error) {
+                console.error('❌ Error force deleting user posted gigs cache:', error);
+            }
+
             res.json({
                 success: true,
                 message: 'Draft published successfully',
@@ -664,6 +684,26 @@ class GigController {
             await this.cache.invalidateGig(id, userId);
             await this.cache.invalidateUserGigs(userId);
             await this.cache.clearSearchCaches(); // Clear search caches as gig details changed
+
+            // Specifically invalidate user posted gigs cache
+            await this.cache.invalidatePattern(`user_posted_gigs:${userId}:*`);
+
+            // Force delete specific cache patterns for getMyPostedGigs
+            try {
+                const postedGigsCachePatterns = [
+                    `user_posted_gigs:${userId}:all_nosearch_all_all_1_20_createdAt_desc`,
+                    `user_posted_gigs:${userId}:OPEN_nosearch_all_all_1_20_createdAt_desc`,
+                    `user_posted_gigs:${userId}:all_nosearch_all_all_1_10_createdAt_desc`,
+                    `user_posted_gigs:${userId}:OPEN_nosearch_all_all_1_10_createdAt_desc`
+                ];
+
+                for (const cacheKey of postedGigsCachePatterns) {
+                    await this.cache.cacheManager.del(cacheKey);
+                }
+                console.log(`🗑️ Force deleted user posted gigs cache patterns for user: ${userId} (update)`);
+            } catch (error) {
+                console.error('❌ Error force deleting user posted gigs cache:', error);
+            }
 
             // Publish event
             await this.publishEvent('gig_updated', {
