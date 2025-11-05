@@ -164,8 +164,8 @@ function createServiceProxy(serviceName) {
                     return newPath;
                 }
 
-                // Handle /api/applications, /api/my, /api/submissions, /api/crew routes
-                const gigServiceRoutes = ['/api/applications', '/api/my', '/api/submissions', '/api/crew'];
+                // Handle /api/applications, /api/my, /api/submissions, /api/crew, /api/chat routes
+                const gigServiceRoutes = ['/api/applications', '/api/my', '/api/submissions', '/api/crew', '/api/chat'];
                 for (const route of gigServiceRoutes) {
                     if (path.startsWith(route)) {
                         const remainingPath = path.substring(route.length);

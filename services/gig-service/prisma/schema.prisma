@@ -65,7 +65,8 @@ model Gig {
   applications  Application[]
   submissions   Submission[]
   assignment    GigAssignment?
-
+  chats         GigChat[]
+  agreedToTerms Boolean
   @@map("gigs")
 }
 
@@ -100,7 +101,8 @@ model Application {
   gig           Gig       @relation(fields: [gigId], references: [id], onDelete: Cascade)
   submissions   Submission[]
   assignment    GigAssignment?
-
+  chat          GigChat?
+  agreedToTerms Boolean
   @@unique([applicantId, gigId])
   @@map("applications")
 }
@@ -235,6 +237,53 @@ model GigTask {
   milestone    GigMilestone? @relation(fields: [milestoneId], references: [id])
   
   @@map("gigTasks")
+}
+
+model GigChat {
+  id            String   @id @default(cuid())
+  gigId         String
+  applicationId String   @unique // One chat per application
+  gigOwnerId    String   // Brand/Gig owner user ID
+  applicantId   String   // Applicant user ID
+  isActive      Boolean  @default(true) // False when application is closed (read-only)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastMessageAt DateTime @default(now())
+  
+  // Relations
+  gig           Gig      @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  messages      GigChatMessage[]
+  
+  @@index([gigId])
+  @@index([gigOwnerId])
+  @@index([applicantId])
+  @@map("gigChats")
+}
+
+model GigChatMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  senderId  String   // User ID of the sender
+  senderType String  // "gig_owner" or "applicant"
+  message   String   @db.Text
+  messageType String @default("text") // "text", "file", "image"
+  fileUrl   String?  // For file/image messages
+  fileName  String?  // Original filename
+  isEdited  Boolean  @default(false)
+  editedAt  DateTime?
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  chat      GigChat  @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("gigChatMessages")
 }
 
 // gig-service/prisma/schema.prisma

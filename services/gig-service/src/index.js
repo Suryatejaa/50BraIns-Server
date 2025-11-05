@@ -20,6 +20,8 @@ const publicRoutes = require('./routes/public');
 const applicationRoutes = require('./routes/applications');
 const submissionRoutes = require('./routes/submissions');
 const crewRoutes = require('./routes/crew');
+const chatRoutes = require('./routes/chat');
+// const adminRoutes = require('./routes/admin');
 
 // Import middleware
 const {
@@ -106,6 +108,18 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
     console.log(`${timestamp} ${req.method} ${req.url} - ${req.ip}`);
+
+    // Special logging for chat routes
+    if (req.url.startsWith('/chat')) {
+        console.log(`🎭 [Gig Service] Chat route hit: ${req.url}`, {
+            headers: {
+                userId: req.headers['x-user-id'],
+                userEmail: req.headers['x-user-email'],
+                authorization: req.headers.authorization ? 'present' : 'missing'
+            }
+        });
+    }
+
     next();
 });
 
@@ -119,6 +133,7 @@ app.use('/public', publicRoutes);
 app.use('/applications', applicationRoutes);
 app.use('/submissions', submissionRoutes);
 app.use('/crew', crewRoutes);
+app.use('/chat', chatRoutes);
 
 // Cache metrics endpoint
 app.get('/cache/metrics', (req, res) => {
@@ -153,7 +168,9 @@ app.get('/', (req, res) => {
             gigs: '/gigs',
             myGigs: '/my/posted',
             myApplications: '/my/applications',
-            public: '/public'
+            public: '/public',
+            chat: '/chat',
+            chatTest: '/chat/test'
         }
     });
 });

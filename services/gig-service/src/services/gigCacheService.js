@@ -375,6 +375,111 @@ class GigCacheService {
     }
 
     /**
+     * Safe cache invalidation wrapper - prevents cache errors from breaking app flow
+     */
+    async safeInvalidate(operation, ...args) {
+        if (!this.cacheManager || !this.isInitialized) {
+            console.warn('⚠️ CacheManager not initialized, skipping cache invalidation');
+            return;
+        }
+        try {
+            if (typeof this[operation] === 'function') {
+                await this[operation](...args);
+            } else {
+                console.warn(`⚠️ Cache operation ${operation} not found`);
+            }
+        } catch (error) {
+            console.error(`❌ Safe cache invalidation error for ${operation}:`, error.message);
+            // Don't throw - let the app continue
+        }
+    }
+
+    /**
+     * Comprehensive cache invalidation for critical operations
+     * Use this for operations that affect multiple cache layers
+     */
+    async invalidateComprehensive(options = {}) {
+        const {
+            gigId,
+            postedById,
+            applicantId,
+            submissionId,
+            applicationId,
+            includeStats = false,
+            includeSearch = true
+        } = options;
+
+        const invalidations = [];
+
+        // Core entity invalidation
+        if (gigId) {
+            invalidations.push(() => this.invalidateGig(gigId, postedById));
+        }
+        if (applicationId) {
+            invalidations.push(() => this.invalidateApplication(applicationId, gigId, applicantId));
+        }
+        if (submissionId) {
+            invalidations.push(() => this.invalidateSubmission(submissionId, gigId, applicantId));
+        }
+
+        // User-specific invalidation
+        if (postedById) {
+            invalidations.push(() => this.invalidateUserGigs(postedById));
+            invalidations.push(() => this.invalidatePattern(`received_applications:${postedById}:*`));
+        }
+        if (applicantId) {
+            invalidations.push(() => this.invalidatePattern(`user_applications:${applicantId}:*`));
+        }
+
+        // Broad invalidation
+        if (includeSearch) {
+            invalidations.push(() => this.clearSearchCaches());
+        }
+        if (includeStats) {
+            invalidations.push(() => this.invalidateStats());
+        }
+
+        // Execute all invalidations safely
+        for (const invalidation of invalidations) {
+            try {
+                await invalidation();
+            } catch (error) {
+                console.error('❌ Comprehensive invalidation error:', error.message);
+                // Continue with other invalidations
+            }
+        }
+
+        console.log(`✅ Comprehensive cache invalidation completed for options:`, options);
+    }
+
+    /**
+     * Bulk invalidation helper for common update scenarios
+     */
+    async invalidateGigRelated(gigId, postedById, applicantId = null) {
+        const operations = [
+            () => this.invalidateGig(gigId, postedById),
+            () => this.invalidateUserGigs(postedById),
+            () => this.clearSearchCaches()
+        ];
+
+        if (applicantId) {
+            operations.push(
+                () => this.invalidatePattern(`user_applications:${applicantId}:*`),
+                () => this.invalidatePattern(`received_applications:${postedById}:*`)
+            );
+        }
+
+        // Execute all invalidations without stopping on errors
+        for (const operation of operations) {
+            try {
+                await operation();
+            } catch (error) {
+                console.error('❌ Bulk invalidation error:', error.message);
+            }
+        }
+    }
+
+    /**
      * Invalidate by pattern (proxy to cacheManager)
      */
     async invalidatePattern(pattern) {

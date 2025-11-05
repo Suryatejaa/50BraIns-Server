@@ -43,6 +43,40 @@ class WebSocketGatewayService {
         this.app.get('/health/websocket', HealthController.getWebSocketHealth);
         this.app.get('/health/rabbitmq', HealthController.getRabbitMQHealth);
 
+        // API endpoint for sending notifications
+        this.app.post('/api/send-notification', (req, res) => {
+            try {
+                const { userId, eventType, data } = req.body;
+
+                if (!userId || !eventType || !data) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'userId, eventType, and data are required'
+                    });
+                }
+
+                // Send notification via WebSocket Gateway
+                if (this.wsGateway) {
+                    this.wsGateway.sendToUser(userId, eventType, data);
+                    res.json({
+                        success: true,
+                        message: 'Notification sent successfully'
+                    });
+                } else {
+                    res.status(503).json({
+                        success: false,
+                        error: 'WebSocket Gateway not available'
+                    });
+                }
+            } catch (error) {
+                console.error('Error sending notification:', error);
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to send notification'
+                });
+            }
+        });
+
         // Root endpoint
         this.app.get('/', (req, res) => {
             res.json({
@@ -52,7 +86,8 @@ class WebSocketGatewayService {
                 endpoints: {
                     websocket: `ws://localhost:${this.port}/ws`,
                     health: `http://localhost:${this.port}/health`,
-                    websocketHealth: `http://localhost:${this.port}/health/websocket`
+                    websocketHealth: `http://localhost:${this.port}/health/websocket`,
+                    sendNotification: `http://localhost:${this.port}/api/send-notification`
                 }
             });
         });
@@ -74,8 +109,14 @@ class WebSocketGatewayService {
         try {
             await this.wsGateway.rabbitmqService.connect();
             logger.logConnection('RabbitMQ connection established successfully');
+
+            // Initialize all services after RabbitMQ connection is ready
+            await this.wsGateway.notificationService.initialize();
+            await this.wsGateway.gigChatService.initialize();
+            logger.logConnection('All WebSocket services initialized successfully');
+
         } catch (error) {
-            logger.logError('Failed to establish RabbitMQ connection', { error: error.message });
+            logger.logError('Failed to initialize WebSocket services', { error: error.message });
             // Don't exit - let the service run and retry later
         }
     }

@@ -451,6 +451,11 @@ class GigController {
                 publishedFromDraft: true
             });
 
+            // Invalidate related caches after publishing draft
+            await this.cache.invalidateGig(id, userId);
+            await this.cache.invalidateUserGigs(userId);
+            await this.cache.clearSearchCaches(); // Clear search caches as new gig is published
+
             res.json({
                 success: true,
                 message: 'Draft published successfully',
@@ -655,6 +660,11 @@ class GigController {
                 }
             });
 
+            // Invalidate related caches after gig update
+            await this.cache.invalidateGig(id, userId);
+            await this.cache.invalidateUserGigs(userId);
+            await this.cache.clearSearchCaches(); // Clear search caches as gig details changed
+
             // Publish event
             await this.publishEvent('gig_updated', {
                 gigId: id,
@@ -738,6 +748,13 @@ class GigController {
                 where: { id }
             });
 
+            // Invalidate related caches after gig deletion
+            await this.cache.invalidateGig(id, userId);
+            await this.cache.invalidateUserGigs(userId);
+            await this.cache.clearSearchCaches(); // Clear search caches as gig is deleted
+            await this.cache.invalidatePattern(`gig_applications:${id}`);
+            await this.cache.invalidatePattern(`gig_submissions:${id}`);
+
             // Publish event
             await this.publishEvent('gig_deleted', {
                 gigId: id,
@@ -805,6 +822,11 @@ class GigController {
                 }
             });
 
+            // Invalidate related caches after publishing gig
+            await this.cache.invalidateGig(id, userId);
+            await this.cache.invalidateUserGigs(userId);
+            await this.cache.clearSearchCaches(); // Clear search caches as gig status changed
+
             // Publish event
             await this.publishEvent('gig_published', {
                 gigId: id,
@@ -864,6 +886,11 @@ class GigController {
                     updatedAt: new Date()
                 }
             });
+
+            // Invalidate related caches after closing gig
+            await this.cache.invalidateGig(id, userId);
+            await this.cache.invalidateUserGigs(userId);
+            await this.cache.clearSearchCaches(); // Clear search caches as gig status changed
 
             // Publish event
             await this.publishEvent('gig_closed', {
@@ -2008,6 +2035,13 @@ class GigController {
                 };
             }, 300); // 5 minute TTL
 
+            // Set cache control headers to prevent browser caching
+            res.set({
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            });
+
             res.json({
                 success: true,
                 data: applicationsData
@@ -2078,6 +2112,14 @@ class GigController {
                 }
             });
 
+            console.log(`🔍 [getMyApplicationToGig] Found application:`, {
+                gigId,
+                userId,
+                applicationId: application?.id,
+                applicationStatus: application?.status,
+                timestamp: new Date().toISOString()
+            });
+
             if (!application) {
                 return res.status(400).json({
                     success: false,
@@ -2089,6 +2131,13 @@ class GigController {
                 gigId: application.gigId,
                 status: application.status
             };
+
+            // Set cache control headers to prevent browser caching
+            res.set({
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            });
 
             res.json({
                 success: true,

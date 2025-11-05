@@ -6,6 +6,7 @@
 const WebSocket = require('ws');
 const { NotificationService } = require('./notification.service');
 const { ClanChatService } = require('./clan-chat.service');
+const { GigChatService } = require('./gig-chat.service');
 const { RabbitMQService } = require('./rabbitmq.service');
 const logger = require('../utils/logger');
 
@@ -13,10 +14,11 @@ class WebSocketGateway {
     constructor() {
         this.wss = null;
         this.connections = new Map(); // userId -> WebSocket
-        this.userServices = new Map(); // userId -> { notifications: [], clans: [] }
+        this.userServices = new Map(); // userId -> { notifications: [], clans: [], gigChats: [] }
         this.rabbitmqService = new RabbitMQService();
         this.notificationService = new NotificationService(this.rabbitmqService);
         this.clanChatService = new ClanChatService(this.rabbitmqService);
+        this.gigChatService = new GigChatService(this.rabbitmqService);
     }
 
     /**
@@ -121,7 +123,8 @@ class WebSocketGateway {
         this.userServices.set(userId, {
             notifications: serviceType === 'notifications' ? ['general'] : [],
             clans: serviceType === 'clan-chat' ? ['general'] : [],
-            gigs: serviceType === 'gig' ? ['general'] : []
+            gigs: serviceType === 'gig' ? ['general'] : [],
+            gigChats: serviceType === 'gig-chat' ? ['general'] : []
         });
 
         // Set connection metadata
@@ -193,14 +196,30 @@ class WebSocketGateway {
                     this.sendError(ws, 'Clan chat service is not available in MVP');
                     break;
 
+                case 'subscribe_gig_chat':
+                    await this.handleGigChatSubscription(ws, message, userId);
+                    break;
+
+                case 'unsubscribe_gig_chat':
+                    await this.handleGigChatUnsubscription(ws, message, userId);
+                    break;
+
                 case 'chat':
                 case 'chat_message':
                     await this.handleChatMessage(ws, message, userId);
                     break;
 
+                case 'gig_chat_message':
+                    await this.handleGigChatMessage(ws, message, userId);
+                    break;
+
                 case 'typing':
                 case 'typing_indicator':
                     await this.handleTypingIndicator(ws, message, userId);
+                    break;
+
+                case 'gig_chat_typing':
+                    await this.handleGigChatTyping(ws, message, userId);
                     break;
 
                 case 'notification_ack':
@@ -444,6 +463,101 @@ class WebSocketGateway {
     }
 
     /**
+     * Handle gig chat subscription
+     */
+    async handleGigChatSubscription(ws, message, userId) {
+        try {
+            // Check if RabbitMQ is ready, if not, wait and retry
+            if (!this.rabbitmqService.isReady()) {
+                logger.logWarn('RabbitMQ not ready, waiting for connection...', { userId, serviceType: ws.serviceType });
+
+                // Log current RabbitMQ status for debugging
+                const status = this.rabbitmqService.getConnectionStatus();
+                logger.logWarn('Current RabbitMQ status', { ...status, userId, serviceType: ws.serviceType });
+
+                // Wait for RabbitMQ connection with timeout
+                let attempts = 0;
+                const maxAttempts = 20; // 20 * 500ms = 10 seconds
+
+                while (!this.rabbitmqService.isReady() && attempts < maxAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    attempts++;
+
+                    // Log status every 5 attempts
+                    if (attempts % 5 === 0) {
+                        const currentStatus = this.rabbitmqService.getConnectionStatus();
+                        logger.logWarn(`RabbitMQ status after ${attempts} attempts`, { ...currentStatus, userId, serviceType: ws.serviceType });
+                    }
+                }
+
+                if (!this.rabbitmqService.isReady()) {
+                    const finalStatus = this.rabbitmqService.getConnectionStatus();
+                    logger.logError('RabbitMQ connection timeout', { ...finalStatus, userId, serviceType: ws.serviceType });
+                    throw new Error('RabbitMQ connection timeout');
+                }
+            }
+
+            await this.gigChatService.subscribe(userId, (chatMessage) => {
+                this.sendToUser(userId, {
+                    type: 'gig_chat_message',
+                    ...chatMessage
+                });
+            });
+
+            const userServices = this.userServices.get(userId);
+            if (userServices && userServices.gigChats) {
+                userServices.gigChats.push('general');
+            }
+
+            this.sendToUser(userId, {
+                type: 'subscription_confirmed',
+                service: 'gig_chat',
+                status: 'subscribed'
+            });
+
+            logger.logMessage('User subscribed to gig chat', { userId, serviceType: ws.serviceType });
+
+        } catch (error) {
+            logger.logError('Error subscribing to gig chat', {
+                error: error.message,
+                userId,
+                serviceType: ws.serviceType
+            });
+            this.sendError(ws, 'Failed to subscribe to gig chat');
+        }
+    }
+
+    /**
+     * Handle gig chat unsubscription
+     */
+    async handleGigChatUnsubscription(ws, message, userId) {
+        try {
+            await this.gigChatService.unsubscribe(userId);
+
+            const userServices = this.userServices.get(userId);
+            if (userServices) {
+                userServices.gigChats = [];
+            }
+
+            this.sendToUser(userId, {
+                type: 'subscription_confirmed',
+                service: 'gig_chat',
+                status: 'unsubscribed'
+            });
+
+            logger.logMessage('User unsubscribed from gig chat', { userId, serviceType: ws.serviceType });
+
+        } catch (error) {
+            logger.logError('Error unsubscribing from gig chat', {
+                error: error.message,
+                userId,
+                serviceType: ws.serviceType
+            });
+            this.sendError(ws, 'Failed to unsubscribe from gig chat');
+        }
+    }
+
+    /**
      * Handle chat message
      */
     async handleChatMessage(ws, message, userId) {
@@ -484,6 +598,36 @@ class WebSocketGateway {
     }
 
     /**
+     * Handle gig chat message
+     */
+    async handleGigChatMessage(ws, message, userId) {
+        try {
+            logger.logMessage('Gig chat message received via WebSocket', {
+                userId,
+                chatId: message.chatId,
+                messageType: message.messageType || 'text'
+            });
+
+            // Acknowledge receipt - actual message sending is handled by gig-service REST API
+            // which publishes to RabbitMQ and this WebSocket Gateway receives the event
+            this.sendToUser(userId, {
+                type: 'gig_chat_message_received',
+                chatId: message.chatId,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            logger.logError('Error handling gig chat message', {
+                error: error.message,
+                userId,
+                serviceType: ws.serviceType,
+                chatId: message.chatId
+            });
+            this.sendError(ws, 'Failed to process gig chat message');
+        }
+    }
+
+    /**
      * Handle typing indicator
      */
     async handleTypingIndicator(ws, message, userId) {
@@ -511,7 +655,41 @@ class WebSocketGateway {
                 serviceType: ws.serviceType,
                 clanId: message.clanId
             });
-            this.sendError(ws, 'Failed to process typing indicator');
+            this.sendError(ws, 'Failed to handle typing indicator');
+        }
+    }
+
+    /**
+     * Handle gig chat typing indicator
+     */
+    async handleGigChatTyping(ws, message, userId) {
+        try {
+            const { isTyping, chatId, recipientId } = message;
+
+            if (!chatId || !recipientId) {
+                this.sendError(ws, 'Chat ID and recipient ID are required for gig chat typing indicator');
+                return;
+            }
+
+            // Send typing indicator via RabbitMQ service
+            await this.gigChatService.sendTypingIndicator(userId, recipientId, chatId, isTyping);
+
+            logger.logMessage('Gig chat typing indicator processed', {
+                userId,
+                recipientId,
+                chatId,
+                isTyping,
+                serviceType: ws.serviceType
+            });
+
+        } catch (error) {
+            logger.logError('Error handling gig chat typing indicator', {
+                error: error.message,
+                userId,
+                serviceType: ws.serviceType,
+                chatId: message.chatId
+            });
+            this.sendError(ws, 'Failed to handle gig chat typing indicator');
         }
     }
 

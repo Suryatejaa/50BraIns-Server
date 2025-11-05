@@ -90,6 +90,7 @@ model User {
   
   // Privacy settings
   showContact       Boolean  @default(false)
+  isAgreedToTermsAndRefundPolicy Boolean @default(false)
   
   // Relations (shared with auth-service)
   refreshTokens     RefreshToken[]

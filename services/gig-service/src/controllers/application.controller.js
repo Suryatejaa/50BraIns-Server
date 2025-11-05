@@ -84,6 +84,24 @@ class ApplicationController {
             'string.pattern.base': 'UPI ID must be in valid format (e.g., user@paytm, user@gpay)',
             'any.required': 'UPI ID is required for payment processing'
         }),
+        agreedToTerms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional().default(true).messages({
+            'alternatives.match': 'You must agree to the Terms of Service and Refund Policy'
+        }),
+        // Alternative field names for agreedToTerms
+        agreed_to_terms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional(),
+        agreeToTerms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional(),
 
         // Address field for PRODUCT type gigs
         address: Joi.string().optional(), // Will be validated dynamically based on gig type
@@ -210,7 +228,25 @@ class ApplicationController {
         upiId: Joi.string().pattern(/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/).required().messages({
             'string.pattern.base': 'UPI ID must be in valid format (e.g., user@paytm, user@gpay)',
             'any.required': 'UPI ID is required for payment processing'
-        })
+        }),
+        agreedToTerms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional().default(true).messages({
+            'alternatives.match': 'You must agree to the Terms of Service and Refund Policy'
+        }),
+        // Alternative field names for agreedToTerms
+        agreed_to_terms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional(),
+        agreeToTerms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional()
     });
 
     // Truly relaxed validation schema for draft gigs (ALL fields optional)
@@ -453,6 +489,27 @@ class ApplicationController {
                 });
             }
 
+            // Custom validation for terms agreement (check multiple possible field names)
+            const termsAgreement = value.agreedToTerms ||
+                value.agreed_to_terms ||
+                value.agreeToTerms ||
+                req.body.agreedToTerms ||
+                req.body.agreed_to_terms ||
+                req.body.agreeToTerms;
+
+            const termsAccepted = termsAgreement === true ||
+                termsAgreement === 'true' ||
+                termsAgreement === 1 ||
+                termsAgreement === '1';
+
+            if (!termsAccepted) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Agreement to Terms of Service and Refund Policy is required',
+                    details: ['You must agree to the Terms of Service and Refund Policy to apply for this gig']
+                });
+            }
+
             // Check if gig exists and is open
             const gig = await this.prisma.gig.findUnique({
                 where: { id },
@@ -681,7 +738,9 @@ class ApplicationController {
                     upiId: value.upiId,
                     teamPlan: value.applicantType === 'clan' ? normalizedTeamPlan : null,
                     milestonePlan: value.applicantType === 'clan' ? value.milestonePlan : null,
-                    payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null
+                    payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null,
+                    agreedToTerms: true
+                    // Note: agreedToTerms is removed since it's not a database field
                 }
             });
 
@@ -1065,6 +1124,12 @@ class ApplicationController {
             //     message: `You have been invited to work on "${gig.title}". Please review and accept the invitation.`
             // });
 
+            // Invalidate related caches after sending gig invitation
+            await this.cache.invalidateApplication(application.id, id, applicantId);
+            await this.cache.invalidatePattern(`received_applications:${ownerId}:*`);
+            await this.cache.invalidatePattern(`user_applications:${applicantId}:*`);
+            await this.cache.invalidateGig(id, ownerId);
+
             res.status(201).json({
                 success: true,
                 message: existingApplication && inactiveStatuses.includes(existingApplication.status)
@@ -1319,6 +1384,27 @@ class ApplicationController {
                 console.error('❌ [Gig Service] Failed to publish work_submission_confirmed event:', error);
             }
 
+            // Comprehensive cache invalidation after work submission
+            await this.cache.invalidateComprehensive({
+                gigId: id,
+                postedById: gig.postedById,
+                applicantId: req.user.id,
+                submissionId: submission.id,
+                applicationId: application.id,
+                includeStats: false,
+                includeSearch: false
+            });
+
+            // Force clear gig cache to ensure status updates are visible immediately
+            await this.cache.invalidatePattern(`gig:${id}*`);
+            try {
+                await this.cache.cacheManager.del(`gig:${id}`);
+                console.log(`🗑️ Force deleted gig cache after work submission: ${id}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig cache:', error);
+            }
+
+
             res.status(201).json({
                 success: true,
                 message: 'Work submitted successfully',
@@ -1495,6 +1581,14 @@ class ApplicationController {
                 });
             }
             console.log('reviewSubmission updated application status based on submission review');
+
+            // Invalidate related caches after application rejection
+            await this.cache.invalidateApplication(id, application.gigId, application.applicantId);
+            await this.cache.invalidatePattern(`received_applications:${application.gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
+            await this.cache.invalidateGig(application.gigId, application.gig.postedById);
+
+
             // Publish events
             await this.publishEvent('submission_reviewed', {
                 gigId: submission.gigId,
@@ -1631,6 +1725,17 @@ class ApplicationController {
                 message: reviewMessage
             });
 
+            // Comprehensive cache invalidation after submission review
+            await this.cache.invalidateComprehensive({
+                gigId: submission.gigId,
+                postedById: submission.gig.postedById,
+                applicantId: submission.submittedById,
+                submissionId: id,
+                applicationId: submission.applicationId,
+                includeStats: value.status === 'APPROVED', // Include stats only on approval
+                includeSearch: false
+            });
+
             res.json({
                 success: true,
                 message: `Submission ${value.status.toLowerCase()} successfully`,
@@ -1723,6 +1828,20 @@ class ApplicationController {
             await this.cache.invalidateApplication(application.id, application.gigId, application.applicantId);
             await this.cache.invalidatePattern(`received_applications:${gig.postedById}:*`);
             await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
+
+            // Force invalidate gig applications cache for the gig owner
+            await this.cache.invalidatePattern(`gig_applications:${application.gigId}:*`);
+            const gigApplicationsCacheKey = `gig_applications:${application.gigId}:${gig.postedById}`;
+            try {
+                const deletedGigApps = await this.cache.cacheManager.del(gigApplicationsCacheKey);
+                console.log(`🗑️ Force deleted gig applications cache for withdrawal: ${gigApplicationsCacheKey}, result: ${deletedGigApps}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig applications cache:', error);
+            }
+
+            // Also invalidate any application status caches (for getMyApplicationToGig endpoint)
+            await this.cache.invalidatePattern(`application_status:${application.gigId}:${application.applicantId}`);
+            await this.cache.invalidatePattern(`my_application:${application.gigId}:${application.applicantId}`);
 
             res.json({
                 success: true,
@@ -1874,6 +1993,7 @@ class ApplicationController {
                         });
                     }
 
+
                     return [updatedApplication, updatedGig, assignment];
                 }
 
@@ -1993,6 +2113,62 @@ class ApplicationController {
                 console.error('❌ [Gig Service] Failed to publish work history event for application acceptance:', workHistoryError);
             }
 
+            // Comprehensive cache invalidation after application approval
+            await this.cache.invalidateComprehensive({
+                gigId: application.gigId,
+                postedById: application.gig.postedById,
+                applicantId: application.applicantId,
+                applicationId: id,
+                includeStats: true, // Include stats on approval
+                includeSearch: true // Gig might become unavailable
+            });
+
+            // Additional specific gig cache invalidations to ensure immediate refresh
+            console.log(`🔍 [ApplicationController] Checking cache for gig ${application.gigId} before invalidation`);
+            try {
+                const cacheKey = `gig:${application.gigId}`;
+                const cachedGig = await this.cache.cacheManager.redis.get(cacheKey);
+                console.log(`📊 [ApplicationController] Pre-invalidation cache state: ${cachedGig ? 'EXISTS' : 'NOT_FOUND'}`);
+                if (cachedGig) {
+                    const parsed = JSON.parse(cachedGig);
+                    console.log(`📊 [ApplicationController] Pre-invalidation gig status: ${parsed.status}, assignedTo: ${parsed.assignedToId}`);
+                }
+            } catch (debugError) {
+                console.error('🐛 [ApplicationController] Pre-invalidation debug failed:', debugError);
+            }
+
+            await this.cache.invalidatePattern(`gig:${application.gigId}*`);
+            await this.cache.invalidatePattern(`*${application.gigId}*`);
+
+            // Force invalidate gig applications cache for the gig owner
+            await this.cache.invalidatePattern(`gig_applications:${application.gigId}:*`);
+
+            // Force delete the specific gig applications cache for the gig owner
+            try {
+                const gigApplicationsCacheKey = `gig_applications:${application.gigId}:${application.gig.postedById}`;
+                const deletedGigApps = await this.cache.cacheManager.del(gigApplicationsCacheKey);
+                console.log(`🗑️ Force deleted gig applications cache for: ${gigApplicationsCacheKey}, result: ${deletedGigApps}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig applications cache:', error);
+            }
+
+            // Also invalidate any application status caches (for getMyApplicationToGig endpoint)
+            await this.cache.invalidatePattern(`application_status:${application.gigId}:${application.applicantId}`);
+            await this.cache.invalidatePattern(`my_application:${application.gigId}:${application.applicantId}`);
+
+            // Force invalidate any remaining gig cache entries
+            try {
+                const deleted = await this.cache.cacheManager.del(`gig:${application.gigId}`);
+                console.log(`🗑️ Force deleted gig cache for: ${application.gigId}, result: ${deleted}`);
+
+                // Verify deletion
+                const checkAfterDelete = await this.cache.cacheManager.redis.get(`gig:${application.gigId}`);
+                console.log(`✅ [ApplicationController] Post-deletion verification: ${checkAfterDelete ? 'STILL_EXISTS' : 'SUCCESSFULLY_DELETED'}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig cache:', error);
+            }
+
+
             res.json({
                 success: true,
                 message: 'Application accepted successfully',
@@ -2074,7 +2250,25 @@ class ApplicationController {
                 }
             });
 
+            // Invalidate related caches after application rejection
+            await this.cache.invalidateApplication(id, application.gigId, application.applicantId);
+            await this.cache.invalidatePattern(`received_applications:${application.gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${application.applicantId}:*`);
+            await this.cache.invalidateGig(application.gigId, application.gig.postedById);
 
+            // Force invalidate gig applications cache for the gig owner
+            await this.cache.invalidatePattern(`gig_applications:${application.gigId}:*`);
+            const gigApplicationsCacheKey = `gig_applications:${application.gigId}:${application.gig.postedById}`;
+            try {
+                const deletedGigApps = await this.cache.cacheManager.del(gigApplicationsCacheKey);
+                console.log(`🗑️ Force deleted gig applications cache for rejection: ${gigApplicationsCacheKey}, result: ${deletedGigApps}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig applications cache:', error);
+            }
+
+            // Also invalidate any application status caches (for getMyApplicationToGig endpoint) 
+            await this.cache.invalidatePattern(`application_status:${application.gigId}:${application.applicantId}`);
+            await this.cache.invalidatePattern(`my_application:${application.gigId}:${application.applicantId}`);
 
             // Publish event
             await this.publishEvent('application_rejected', {
@@ -2147,6 +2341,27 @@ class ApplicationController {
                 });
             }
 
+            // Custom validation for terms agreement (check multiple possible field names)
+            const termsAgreement = value.agreedToTerms ||
+                value.agreed_to_terms ||
+                value.agreeToTerms ||
+                req.body.agreedToTerms ||
+                req.body.agreed_to_terms ||
+                req.body.agreeToTerms;
+
+            const termsAccepted = termsAgreement === true ||
+                termsAgreement === 'true' ||
+                termsAgreement === 1 ||
+                termsAgreement === '1';
+
+            if (!termsAccepted) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Agreement to Terms of Service and Refund Policy is required',
+                    details: ['You must agree to the Terms of Service and Refund Policy to accept this invitation']
+                });
+            }
+
             // Try to find application by ID first, then fallback to finding by gig ID
             let targetApplication = await this.prisma.application.findUnique({
                 where: { id },
@@ -2213,6 +2428,7 @@ class ApplicationController {
                         status: 'APPROVED',
                         respondedAt: new Date(),
                         upiId: value.upiId
+                        // Note: agreedToTerms is removed since it's not a database field
                     }
                 });
 
@@ -2348,6 +2564,13 @@ class ApplicationController {
             //     acceptedByUserId: userId,
             //     message: `Your gig invitation for "${targetApplication.gig.title}" has been accepted`
             // });
+
+            // Invalidate related caches after invitation acceptance
+            await this.cache.invalidateApplication(actualApplicationId, targetApplication.gigId, userId);
+            await this.cache.invalidatePattern(`received_applications:${targetApplication.gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${userId}:*`);
+            await this.cache.invalidateGig(targetApplication.gigId, targetApplication.gig.postedById);
+
             res.json({
                 success: true,
                 message: 'Gig invitation accepted',
@@ -2695,6 +2918,11 @@ class ApplicationController {
                     updatedAt: new Date()
                 }
             });
+
+            // Invalidate related caches after application update
+            await this.cache.invalidateApplication(id, application.gigId, userId);
+            await this.cache.invalidatePattern(`user_applications:${userId}:*`);
+            await this.cache.invalidatePattern(`received_applications:*`); // Broad invalidation since we don't have gig owner ID
 
             res.json({
                 success: true,

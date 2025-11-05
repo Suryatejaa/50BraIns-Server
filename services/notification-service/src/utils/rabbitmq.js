@@ -121,6 +121,12 @@ class RabbitMQService {
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'application_approved_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submission_confirmed');
 
+        // NEW: Bind to application conversation events (incident management style)
+        await this.channel.bindQueue('notifications.gig.events', 'brains_events', 'chat.application_response_added');
+        await this.channel.bindQueue('notifications.gig.events', 'brains_events', 'chat.gig_chat_message'); // Legacy support
+        await this.channel.bindQueue('notifications.gig.events', 'brains_events', 'chat.conversation_started');
+        await this.channel.bindQueue('notifications.gig.events', 'brains_events', 'chat.conversation_closed');
+
         // NEW: Bind to invitation events
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_sent');
         // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'gig_invitation_notification');
@@ -310,6 +316,21 @@ class RabbitMQService {
             case 'submission_reviewed':
                 await consumer.handleSubmissionReviewed(eventData);
                 break;
+
+            // Application Conversation Events (Incident Management Style)
+            case 'chat.application_response_added':
+                await consumer.handleApplicationResponseAdded(eventData);
+                break;
+            case 'chat.conversation_started':
+                await consumer.handleConversationStarted(eventData);
+                break;
+            case 'chat.conversation_closed':
+                await consumer.handleConversationClosed(eventData);
+                break;
+            case 'chat.gig_chat_message': // Legacy support
+                await consumer.handleGigChatMessage(eventData);
+                break;
+
             // Decommissioned service events removed for MVP:
             // - All clan events (clan.created, clan.member.joined, etc.)
             // - All credit events (boost_event, credit_event) 

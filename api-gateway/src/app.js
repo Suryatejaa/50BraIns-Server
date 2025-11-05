@@ -378,6 +378,7 @@ app.use('/api/crew', authMiddleware, proxyMiddleware('gig')); // Crew bid manage
 app.use('/api/my', authMiddleware, proxyMiddleware('gig')); // User's posted gigs, applications
 app.use('/api/applications', authMiddleware, proxyMiddleware('gig')); // Gig applications
 app.use('/api/submissions', authMiddleware, proxyMiddleware('gig')); // Gig work submissions
+app.use('/api/chat', authMiddleware, proxyMiddleware('gig')); // Gig chat functionality
 app.use('/api/gig', authMiddleware, proxyMiddleware('gig'));
 
 app.use('/api/reputation', proxyMiddleware('reputation')); // Public reputation data (no auth required)

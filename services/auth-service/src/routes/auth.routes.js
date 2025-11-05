@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth.middleware');
+const { authenticate, requireAdmin, requireSuperAdmin } = require('../middleware/auth.middleware');
 const { rateLimiter } = require('../middleware/security.middleware');
 const authController = require('../controllers/auth.controller');
 const otpController = require('../controllers/otp.controller');
 const simpleController = require('../controllers/simple.controller');
+const adminController = require('../controllers/admin.controller');
 
 // Test route to debug socket hang up
 router.post('/simple-register', simpleController.simpleRegister);
@@ -53,5 +54,20 @@ router.post('/2fa/disable', authenticate, authController.disable2FA);
 
 router.post('/deactivate-account', authenticate, authController.deactivateAccount);
 router.post('/delete-account', authenticate, authController.deleteAccount);
+
+// ========== ADMIN ROUTES ==========
+// Admin User Management Routes
+router.get('/admin/users', authenticate, requireAdmin, adminController.getAllUsers);
+router.get('/admin/users/:userId', authenticate, requireAdmin, adminController.getUserById);
+router.put('/admin/users/:userId/ban', authenticate, requireAdmin, adminController.banUser);
+router.put('/admin/users/:userId/unban', authenticate, requireAdmin, adminController.unbanUser);
+router.put('/admin/users/:userId/status', authenticate, requireAdmin, adminController.updateUserStatus);
+router.put('/admin/users/:userId/roles', authenticate, requireSuperAdmin, adminController.updateUserRoles);
+router.delete('/admin/users/:userId', authenticate, requireSuperAdmin, adminController.deleteUser);
+
+// Admin Analytics Routes
+router.get('/admin/analytics/users', authenticate, requireAdmin, adminController.getUserAnalytics);
+router.get('/admin/logs', authenticate, requireAdmin, adminController.getAdminLogs);
+router.get('/admin/system/stats', authenticate, requireAdmin, adminController.getSystemStats);
 
 module.exports = router;

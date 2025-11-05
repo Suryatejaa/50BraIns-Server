@@ -150,7 +150,7 @@ class NotificationConsumer {
 
     async handleGigApplicationAccepted(eventData) {
         try {
-            const { gigId, applicationId, applicantId,gigTitle, recipientId, applicantType, gigOwnerId } = eventData;
+            const { gigId, applicationId, applicantId, gigTitle, recipientId, applicantType, gigOwnerId } = eventData;
 
             // Notify the applicant that their application was accepted
             await this.createAndSendNotification({
@@ -173,7 +173,7 @@ class NotificationConsumer {
 
     async handleGigApplicationRejected(eventData) {
         try {
-            const { gigId, gigTitle, applicationId,recipientId, applicantId, applicantType, gigOwnerId, reason } = eventData;
+            const { gigId, gigTitle, applicationId, recipientId, applicantId, applicantType, gigOwnerId, reason } = eventData;
 
             // Notify the applicant that their application was rejected
             await this.createAndSendNotification({
@@ -1387,6 +1387,189 @@ class NotificationConsumer {
         }
     }
 
+    // === APPLICATION CONVERSATION EVENT HANDLERS (Incident Management Style) ===
+    async handleApplicationResponseAdded(eventData) {
+        try {
+            console.log('💬 [Notification Service] Handling application_response_added event:', eventData);
+
+            // Extract data from nested structure (eventData.data contains the actual payload)
+            const data = eventData.data || eventData;
+            const {
+                applicationId,
+                gigId,
+                gigTitle,
+                responseNumber,
+                fromUserType,
+                fromUserName,
+                snippet,
+                conversationId,
+                totalResponses,
+                recipientId
+            } = data;
+
+            if (!recipientId) {
+                console.warn('⚠️ [Notification Service] No recipientId in application response event:', {
+                    eventData,
+                    extractedData: data
+                });
+                return;
+            }            // Create notification for the recipient
+            const title = fromUserType === 'brand'
+                ? '💼 New Response from Brand'
+                : '👤 New Response on Your Application';
+
+            const message = fromUserType === 'brand'
+                ? `${fromUserName} responded to your application for "${gigTitle}". Response #${responseNumber}: ${snippet}`
+                : `${fromUserName} added a response to the application discussion for "${gigTitle}". Response #${responseNumber}: ${snippet}`;
+
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'GIG',
+                title: title,
+                message: message,
+                metadata: {
+                    applicationId,
+                    gigId,
+                    conversationId,
+                    responseNumber,
+                    totalResponses,
+                    fromUserType,
+                    eventType: 'application_response_added',
+                    actionRequired: true,
+                    actionUrl: `/applications/${applicationId}/conversation`
+                }
+            });
+
+            console.log('✅ [Notification Service] Application response notification sent successfully');
+            logger.notification('Application response notification sent', {
+                applicationId,
+                recipientId,
+                responseNumber,
+                fromUserType
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling application response notification:', error);
+            logger.error('Error handling application response notification:', error);
+        }
+    }
+
+    async handleConversationStarted(eventData) {
+        try {
+            console.log('🚀 [Notification Service] Handling conversation_started event:', eventData);
+
+            // Extract data from nested structure
+            const data = eventData.data || eventData;
+            const { applicationId, gigId, gigTitle, conversationId, participantIds } = data;
+
+            // Notify all participants that conversation has started
+            if (participantIds && Array.isArray(participantIds)) {
+                for (const userId of participantIds) {
+                    await this.createAndSendNotification({
+                        userId: userId,
+                        type: 'GIG',
+                        category: 'GIG',
+                        title: '💬 Conversation Started',
+                        message: `A conversation thread has been started for the application to "${gigTitle}". You can now discuss details with the other participant.`,
+                        metadata: {
+                            applicationId,
+                            gigId,
+                            conversationId,
+                            eventType: 'conversation_started',
+                            actionUrl: `/applications/${applicationId}/conversation`
+                        }
+                    });
+                }
+            }
+
+            console.log('✅ [Notification Service] Conversation started notifications sent successfully');
+            logger.notification('Conversation started notifications sent', { applicationId, conversationId });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling conversation started notification:', error);
+            logger.error('Error handling conversation started notification:', error);
+        }
+    }
+
+    async handleConversationClosed(eventData) {
+        try {
+            console.log('🔒 [Notification Service] Handling conversation_closed event:', eventData);
+
+            // Extract data from nested structure
+            const data = eventData.data || eventData;
+            const { applicationId, gigId, gigTitle, conversationId, participantIds, closedBy, reason } = data;
+
+            // Notify all participants that conversation has been closed
+            if (participantIds && Array.isArray(participantIds)) {
+                for (const userId of participantIds) {
+                    await this.createAndSendNotification({
+                        userId: userId,
+                        type: 'GIG',
+                        category: 'GIG',
+                        title: '🔒 Conversation Closed',
+                        message: `The conversation thread for "${gigTitle}" has been closed and is now read-only. ${reason ? `Reason: ${reason}` : ''}`,
+                        metadata: {
+                            applicationId,
+                            gigId,
+                            conversationId,
+                            closedBy,
+                            reason,
+                            eventType: 'conversation_closed'
+                        }
+                    });
+                }
+            }
+
+            console.log('✅ [Notification Service] Conversation closed notifications sent successfully');
+            logger.notification('Conversation closed notifications sent', { applicationId, conversationId });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling conversation closed notification:', error);
+            logger.error('Error handling conversation closed notification:', error);
+        }
+    }
+
+    async handleGigChatMessage(eventData) {
+        try {
+            console.log('💬 [Notification Service] Handling legacy gig_chat_message event:', eventData);
+
+            // Extract data from nested structure
+            const data = eventData.data || eventData;
+            // This is for backward compatibility with any old real-time chat events
+            // Most new events should use application_response_added instead
+            const { recipientId, chatId, message, gigTitle, senderRole } = data;
+
+            if (!recipientId) {
+                console.warn('⚠️ [Notification Service] No recipientId in gig chat message event:', {
+                    eventData,
+                    extractedData: data
+                });
+                return;
+            }
+
+            const senderName = senderRole === 'gig_owner' ? 'Brand' : 'Applicant';
+            const messageSnippet = message?.message ? message.message.substring(0, 100) : 'New message';
+
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'GIG',
+                title: `💬 New Message from ${senderName}`,
+                message: `${senderName} sent you a message about "${gigTitle}": ${messageSnippet}${messageSnippet.length > 100 ? '...' : ''}`,
+                metadata: {
+                    chatId,
+                    senderRole,
+                    eventType: 'gig_chat_message',
+                    actionRequired: true
+                }
+            });
+
+            console.log('✅ [Notification Service] Legacy gig chat message notification sent successfully');
+            logger.notification('Legacy gig chat message notification sent', { chatId, recipientId, senderRole });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling gig chat message notification:', error);
+            logger.error('Error handling gig chat message notification:', error);
+        }
+    }
+
     // === GIG INVITATION EVENT HANDLERS ===
     async handleGigInvitationSent(eventData) {
         try {
@@ -1433,7 +1616,7 @@ class NotificationConsumer {
     async handleGigInvitationAccepted(eventData) {
         try {
             console.log('🎉 [Notification Service] Handling gig_invitation_accepted event:', eventData);
-            const { gigId, gigTitle, acceptedByUserId, recipientId, gigOwnerId,message, applicationId } = eventData;
+            const { gigId, gigTitle, acceptedByUserId, recipientId, gigOwnerId, message, applicationId } = eventData;
             await this.createAndSendNotification({
                 userId: recipientId,
                 type: 'ENGAGEMENT',

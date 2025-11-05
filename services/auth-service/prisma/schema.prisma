@@ -68,6 +68,7 @@ model User {
   bannedAt               DateTime?      @db.Timestamptz(6)
   bannedBy               String?
   showContact            Boolean?       @default(false)
+  isAgreedToTermsAndRefundPolicy Boolean? @default(false)
   adminLogs              AdminLog[]     @relation("AdminUser")
   targetedLogs           AdminLog[]     @relation("TargetUser")
   refreshTokens          RefreshToken[]

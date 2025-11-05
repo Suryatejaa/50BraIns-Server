@@ -31,6 +31,10 @@ class AuthService {
 
         const registerPromise = async () => {
             try {
+                // Validate terms and refund policy agreement
+                if (!userData.isAgreedToTermsAndRefundPolicy) {
+                    throw new ValidationError('You must agree to the Terms of Service and Refund Policy to create an account');
+                }
                 const { email, password, username: inputUsername, role, roles = [], instagramHandle, ...additionalFields } = userData;
 
                 // Define valid roles
@@ -120,6 +124,7 @@ class AuthService {
                     isActive: true,
                     status: 'PENDING_VERIFICATION', // Keep pending until OTP verification
                     emailVerified: false,
+                    isAgreedToTermsAndRefundPolicy: userData.isAgreedToTermsAndRefundPolicy,
                     createdAt: new Date(),
                     updatedAt: new Date(),
                     ...(instagramHandle && instagramHandle.trim() !== '' && { instagramHandle: instagramHandle.trim() }),

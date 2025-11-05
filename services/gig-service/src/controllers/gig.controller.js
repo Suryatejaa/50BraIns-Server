@@ -70,7 +70,25 @@ class GigController {
         })).optional(),
         locationRequirements: Joi.array().items(Joi.string()).optional(),
         campaignDuration: Joi.string().optional(), // Alias for duration
-        maxApplications: Joi.number().min(1).optional()
+        maxApplications: Joi.number().min(1).optional(),
+        agreedToTerms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional().default(true).messages({
+            'alternatives.match': 'You must agree to the Terms of Service and Refund Policy'
+        }),
+        // Alternative field names for agreedToTerms
+        agreed_to_terms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional(),
+        agreeToTerms: Joi.alternatives().try(
+            Joi.boolean().valid(true),
+            Joi.string().valid('true'),
+            Joi.number().valid(1)
+        ).optional()
     });
 
     static applyGigSchema = Joi.object({
@@ -436,8 +454,20 @@ class GigController {
     // POST /gigs - Create a new gig
     createGig = async (req, res) => {
         try {
+            // Debug: Log the entire request body to see what's actually being received
+            console.log('Full request body:', JSON.stringify(req.body, null, 2));
+            console.log('Request body keys:', Object.keys(req.body));
+            console.log('Received agreedToTerms:', req.body.agreedToTerms, typeof req.body.agreedToTerms);
+
+            // Check if agreedToTerms exists in any form
+            const hasAgreedToTerms = req.body.hasOwnProperty('agreedToTerms') ||
+                req.body.hasOwnProperty('agreed_to_terms') ||
+                req.body.hasOwnProperty('agreeToTerms');
+            console.log('Has agreed to terms property:', hasAgreedToTerms);
+
             const { error, value } = GigController.createGigSchema.validate(req.body);
             if (error) {
+                console.log('Validation error details:', error.details);
                 return res.status(400).json({
                     success: false,
                     error: `${error.details.map(d => d.message).join(', ')}`,
@@ -445,7 +475,26 @@ class GigController {
                 });
             }
 
-            const id = req.headers['x-user-id'] || req.user?.id;
+            // Custom validation for terms agreement (check multiple possible field names)
+            const termsAgreement = value.agreedToTerms ||
+                value.agreed_to_terms ||
+                value.agreeToTerms ||
+                req.body.agreedToTerms ||
+                req.body.agreed_to_terms ||
+                req.body.agreeToTerms;
+
+            console.log('Final agreedToTerms value:', termsAgreement, typeof termsAgreement);
+
+            const termsAccepted = termsAgreement === true ||
+                termsAgreement === 'true' ||
+                termsAgreement === 1 ||
+                termsAgreement === '1'; if (!termsAccepted) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Agreement to Terms of Service and Refund Policy is required',
+                        details: ['You must agree to the Terms of Service and Refund Policy to create a gig']
+                    });
+                } const id = req.headers['x-user-id'] || req.user?.id;
 
             if (!id) {
                 return res.status(401).json({
@@ -472,6 +521,9 @@ class GigController {
                 locationRequirements,
                 campaignDuration,
                 maxApplications,
+                agreedToTerms,
+                agreed_to_terms,
+                agreeToTerms,
                 ...gigData
             } = value;
 
@@ -528,7 +580,10 @@ class GigController {
                     brandUsername: brandData.username,
                     brandAvatar: brandData.profilePicture,
                     brandVerified: brandData.verified,
-                    isPublic: gigData.isPublic // Default to true if not specified
+                    isPublic: gigData.isPublic,
+                    agreedToTerms: true
+                    // Default to true if not specified
+                    // Note: agreedToTerms is removed since it's not a database field
                 }
             });
 
@@ -1175,8 +1230,22 @@ class GigController {
             const { id } = req.params;
             const userId = req.headers['x-user-id'] || req.user?.id;
 
+            // Debug: Check if gig exists in cache before fetching
+            const cacheKey = `gig:${id}`;
+            try {
+                const cachedGig = await this.cache.cacheManager.redis.get(cacheKey);
+                console.log(`🔍 [GigController] Cache check for ${cacheKey}: ${cachedGig ? 'HIT' : 'MISS'}`);
+                if (cachedGig) {
+                    const parsed = JSON.parse(cachedGig);
+                    console.log(`📊 [GigController] Cached gig status: ${parsed.status}, assignedTo: ${parsed.assignedToId}`);
+                }
+            } catch (debugError) {
+                console.error('🐛 [GigController] Debug cache check failed:', debugError);
+            }
+
             // Use cache-first approach for gig data
             const gig = await this.cache.getGig(id, async () => {
+                console.log(`🔄 [GigController] Cache miss - fetching gig ${id} from database`);
                 return await this.measureQueryPerformance('getGigById', async () => {
                     return await this.prisma.gig.findUnique({
                         where: { id },
@@ -1307,6 +1376,15 @@ class GigController {
                         Math.ceil((new Date(gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
                 }
             };
+
+            // Add cache control headers to prevent client-side caching
+            res.set({
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            });
+
+            console.log(`📤 [GigController] Returning gig ${id} with status: ${gig.status}, assignedTo: ${gig.assignedToId}`);
 
             res.json({
                 success: true,
