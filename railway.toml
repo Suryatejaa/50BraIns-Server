@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "api-gateway/Dockerfile"
+dockerContext = "api-gateway"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "always"
