@@ -48,7 +48,6 @@ const userContext = (req, res, next) => {
 
 // Authorization middleware for protected routes
 const requireAuth = (req, res, next) => {
-    console.log(req.user)
     if (!req.user || !req.user.id || req.user.id === 'anonymous') {
         return res.status(401).json({
             success: false,

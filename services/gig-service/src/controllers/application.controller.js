@@ -5,6 +5,16 @@ const gigCacheService = require('../services/gigCacheService');
 const DatabaseOptimizer = require('../utils/databaseOptimizer');
 const Joi = require('joi');
 const { title } = require('process');
+
+// Helper function to format file sizes
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 class ApplicationController {
     constructor() {
         this.prisma = databaseService.getClient();
@@ -76,7 +86,7 @@ class ApplicationController {
         proposal: Joi.string().min(10).max(1000).optional(),
         quotedPrice: Joi.number().min(0).optional(),
         estimatedTime: Joi.string().optional(),
-        portfolio: Joi.array().items(Joi.string().uri()).default([]),
+        portfolio: Joi.array().items(Joi.string().pattern(/^https?:\/\/.+/)).default([]),
         applicantType: Joi.string().valid('user', 'clan').required(),
         clanId: Joi.string().optional(),
         clanSlug: Joi.string().optional(),
@@ -137,7 +147,7 @@ class ApplicationController {
         proposal: Joi.string().min(10).max(1000).optional(),
         quotedPrice: Joi.number().min(0).optional(),
         estimatedTime: Joi.string().optional(),
-        portfolio: Joi.array().items(Joi.string().uri()).default([]),
+        portfolio: Joi.array().items(Joi.string().pattern(/^https?:\/\/.+/)).default([]),
         applicantType: Joi.string().valid('owner').required(),
         clanId: Joi.string().optional(),
         clanSlug: Joi.string().optional(),
@@ -178,21 +188,45 @@ class ApplicationController {
             type: Joi.string().valid('social_post', 'image', 'video', 'content', 'file', 'other').required(),
             platform: Joi.string().max(50).optional(), // Instagram, TikTok, YouTube, etc.
             content: Joi.string().max(500).optional(), // For text content
-            url: Joi.string().uri().optional(), // For published work
+            url: Joi.string().pattern(/^https?:\/\/.+/).optional(), // For published work - relaxed URL validation
             file: Joi.string().optional(), // File name/reference
             description: Joi.string().max(200).optional() // Brief description
         })).min(1).required(),
-        notes: Joi.string().max(500).optional()
+        notes: Joi.string().max(500).optional().allow('', null)
     });
 
-    static reviewSubmissionSchema = Joi.object({
-        status: Joi.string().valid('APPROVED', 'REJECTED', 'REVISION').required(),
+    static reviewDeliverySchema = Joi.object({
+        status: Joi.string().valid('APPROVED', 'REJECTED').required(),
         feedback: Joi.string().max(1000).optional(),
-        rating: Joi.number().min(1).max(5).when('status', {
+        selectedDeliveryId: Joi.string().when('status', {
             is: 'APPROVED',
             then: Joi.required(),
             otherwise: Joi.optional()
+        }).messages({
+            'any.required': 'You must select which delivery to approve'
         })
+    });
+
+    static submitDeliverySchema = Joi.object({
+        title: Joi.string().min(3).max(200).required(),
+        description: Joi.string().min(5).max(1000).required(),
+        fileUrl: Joi.alternatives().try(
+            Joi.string().uri({ scheme: ['http', 'https'] }), // Full URL
+            Joi.string().regex(/^deliveries\/.*/) // File KEY pattern
+        ).required().messages({
+            'alternatives.match': 'File URL must be a valid URL or file key starting with "deliveries/"',
+            'any.required': 'File URL is required'
+        }),
+        fileName: Joi.string().max(255).required(),
+        fileSize: Joi.number().min(1).optional(),
+        mimeType: Joi.string().max(100).optional(),
+        notes: Joi.string().max(500).optional().allow('', null)
+    });
+
+    static reviewStatusSchema = Joi.object({
+        status: Joi.string().valid('APPROVED', 'REJECTED', 'REVISION_REQUESTED').required(),
+        rating: Joi.number().min(1).max(5).optional(),
+        feedback: Joi.string().max(1000).optional()
     });
 
     static createMilestoneSchema = Joi.object({
@@ -1218,7 +1252,6 @@ class ApplicationController {
     submitWork = async (req, res) => {
         try {
             const { id } = req.params;
-
             const { error, value } = ApplicationController.submitWorkSchema.validate(req.body);
             console.log('submitWork validation result:', { error, value });
             if (error) {
@@ -1242,19 +1275,19 @@ class ApplicationController {
                 });
             }
 
-            // Check if user has an approved application for this gig
+            // Check if user has a delivered application for this gig (delivery approved by brand)
             const application = await this.prisma.application.findFirst({
                 where: {
                     gigId: id,
                     applicantId: req.user.id,
-                    status: 'APPROVED'
+                    status: 'DELIVERED'
                 }
             });
             console.log('submitWork found application:', application);
             if (!application) {
                 return res.status(403).json({
                     success: false,
-                    error: 'You are not assigned to this gig'
+                    error: 'You must have a delivered application (brand-approved delivery) to submit final work URL for this gig'
                 });
             }
 
@@ -1323,7 +1356,7 @@ class ApplicationController {
                     }
                 });
 
-                // Update application status to indicate work has been submitted
+                // Update application status from DELIVERED to SUBMITTED (final URL submitted)
                 await tx.application.update({
                     where: { id: application.id },
                     data: { status: 'SUBMITTED' }
@@ -1473,10 +1506,496 @@ class ApplicationController {
         }
     };
 
+    // GET /api/applications/:applicationId/status
+    // Check if creator can submit delivery
+    getDeliveryStatus = async (req, res) => {
+        try {
+            const { applicationId } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            // Get application
+            const application = await this.prisma.application.findUnique({
+                where: { id: applicationId }
+            });
+
+            if (!application) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Application not found'
+                });
+            }
+
+            // Check ownership
+            if (application.applicantId !== userId) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Unauthorized'
+                });
+            }
+
+            // Get current delivery status
+            const latestDelivery = await this.prisma.gigDelivery.findFirst({
+                where: { applicationId },
+                orderBy: { submittedAt: 'desc' },
+                select: {
+                    id: true,
+                    status: true,
+                    version: true,
+                    submittedAt: true
+                }
+            });
+
+            // Check if PENDING exists
+            const pendingDelivery = await this.prisma.gigDelivery.findFirst({
+                where: {
+                    applicationId,
+                    status: 'PENDING'
+                },
+                select: { id: true, submittedAt: true, version: true }
+            });
+
+            if (pendingDelivery) {
+                return res.json({
+                    success: true,
+                    data: {
+                        canUpload: false,
+                        reason: 'PENDING_DELIVERY',
+                        message: 'You have a pending delivery awaiting brand review',
+                        pendingDelivery: {
+                            id: pendingDelivery.id,
+                            version: pendingDelivery.version,
+                            submittedAt: pendingDelivery.submittedAt,
+                            hoursAgo: Math.round((Date.now() - new Date(pendingDelivery.submittedAt)) / (1000 * 60 * 60))
+                        }
+                    }
+                });
+            }
+
+            // Get all approved deliveries
+            const approvedCount = await this.prisma.gigDelivery.count({
+                where: {
+                    applicationId,
+                    status: 'APPROVED'
+                }
+            });
+
+            if (approvedCount >= 2) {
+                return res.json({
+                    success: true,
+                    data: {
+                        canUpload: false,
+                        reason: 'LIMIT_REACHED',
+                        message: 'You have submitted 2 approved deliveries. Maximum limit reached.',
+                        approvedCount
+                    }
+                });
+            }
+
+            // Can upload
+            res.json({
+                success: true,
+                data: {
+                    canUpload: true,
+                    reason: 'OK',
+                    message: 'You can submit a new delivery',
+                    latestDelivery: latestDelivery ? {
+                        version: latestDelivery.version,
+                        status: latestDelivery.status,
+                        submittedAt: latestDelivery.submittedAt
+                    } : null,
+                    approvedCount,
+                    nextVersionNumber: (latestDelivery?.version || 0) + 1
+                }
+            });
+
+        } catch (error) {
+            console.error('Error checking delivery status:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to check delivery status'
+            });
+        }
+    };
+
+
+    // POST /gigs/:id/submit-delivery - Submit delivery files for brand review (before public submission)
+    submitDelivery = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            console.log(`Body received for submitDelivery:`, req.body);
+            const { error, value } = ApplicationController.submitDeliverySchema.validate(req.body);
+            if (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: `${error.details.map(d => d.message).join(', ')}`,
+                    details: error.details.map(d => d.message)
+                });
+            }
+
+            // Check if gig exists
+            const gig = await this.prisma.gig.findUnique({
+                where: { id }
+            });
+
+            if (!gig) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Gig not found'
+                });
+            }
+
+            // Check if user has approved application
+            const application = await this.prisma.application.findFirst({
+                where: {
+                    gigId: id,
+                    applicantId: userId,
+                    status: 'APPROVED'
+                }
+            });
+
+            if (!application) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You are not assigned to this gig or application not approved'
+                });
+            }
+
+            // ✅ SERVER VALIDATION: Check PENDING delivery exists
+            const pendingDelivery = await this.prisma.gigDelivery.findFirst({
+                where: {
+                    applicationId: application.id,
+                    status: 'PENDING'
+                }
+            });
+
+            if (pendingDelivery) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'You already have a pending delivery. Please wait for brand review.',
+                    code: 'DELIVERY_PENDING',
+                    data: {
+                        pendingDeliveryId: pendingDelivery.id,
+                        submittedAt: pendingDelivery.submittedAt,
+                        version: pendingDelivery.version
+                    }
+                });
+            }
+
+            // ✅ Check approved count limit
+            const approvedCount = await this.prisma.gigDelivery.count({
+                where: {
+                    applicationId: application.id,
+                    status: 'APPROVED'
+                }
+            });
+
+            if (approvedCount >= 2) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'You have reached the maximum limit of 2 approved deliveries.',
+                    code: 'LIMIT_REACHED',
+                    data: { approvedCount }
+                });
+            }
+
+            // Get existing deliveries
+            const existingDeliveries = await this.prisma.gigDelivery.findMany({
+                where: {
+                    applicationId: application.id
+                },
+                orderBy: { submittedAt: 'asc' }
+            });
+
+            // ✅ FIX: Delete oldest REJECTED if >= 3
+            if (existingDeliveries.length >= 3) {
+                const oldestRejected = existingDeliveries.find(d => d.status === 'REJECTED');
+
+                if (oldestRejected) {
+                    try {
+                        const { deleteFile } = require('../services/r2.services');
+                        if (oldestRejected.files && oldestRejected.files.length > 0) {
+                            await deleteFile(oldestRejected.files[0]);
+                            console.log(`🗑️ Deleted file: ${oldestRejected.files[0]}`);
+                        }
+                    } catch (deleteErr) {
+                        console.error('Error deleting file from R2:', deleteErr);
+                        // Continue anyway - don't block upload if file delete fails
+                    }
+
+                    try {
+                        await this.prisma.gigDelivery.delete({
+                            where: { id: oldestRejected.id }
+                        });
+                        console.log(`🗑️ Deleted delivery record: ${oldestRejected.id}`);
+                    } catch (dbErr) {
+                        console.error('Error deleting delivery from DB:', dbErr);
+                    }
+                }
+            }
+
+            // ✅ FIX: Validate fileUrl is not empty
+            if (!value.fileUrl || value.fileUrl.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'File URL is required'
+                });
+            }
+
+            // Create new delivery record
+            let delivery;
+            try {
+                delivery = await this.prisma.gigDelivery.create({
+                    data: {
+                        gigId: id,
+                        applicationId: application.id,
+                        submittedById: userId,
+                        submittedByType: 'user',
+                        title: value.title,
+                        description: value.description,
+                        files: [value.fileUrl], // ← Store KEY in files array
+                        fileNames: [value.fileName], // ← Store file name
+                        fileSizes: [value.fileSize || 0], // ← Store file size
+                        mimeTypes: [value.mimeType || 'application/octet-stream'], // ← Store MIME type
+                        version: existingDeliveries.length + 1,
+                        status: 'PENDING',
+                        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+                        notes: value.notes || null
+                    }
+                });
+
+                console.log(`✅ Created delivery ${delivery.id} version ${delivery.version}`);
+            } catch (createError) {
+                console.error('Error creating delivery record:', createError);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to create delivery record',
+                    details: createError.message
+                });
+            }
+
+            // Publish event
+            try {
+                await this.publishEvent('delivery_submitted', {
+                    gigId: id,
+                    gigTitle: gig.title,
+                    applicationId: application.id,
+                    deliveryId: delivery.id,
+                    submittedById: userId,
+                    recipientId: gig.postedById,
+                    deliveryTitle: value.title,
+                    version: delivery.version,
+                    message: `New delivery submitted for "${gig.title}" - Version ${delivery.version}`
+                });
+            } catch (eventErr) {
+                console.error('Error publishing event:', eventErr);
+                // Don't fail the request if event publishing fails
+            }
+
+            // Invalidate caches
+            try {
+                await this.cache.invalidateApplication(application.id, id, userId);
+                await this.cache.invalidateGig(id, gig.postedById);
+            } catch (cacheErr) {
+                console.error('Error invalidating cache:', cacheErr);
+                // Don't fail the request if cache invalidation fails
+            }
+
+            res.status(201).json({
+                success: true,
+                message: `Delivery submitted successfully (Version ${delivery.version})`,
+                data: {
+                    delivery,
+                    version: delivery.version,
+                    totalDeliveries: existingDeliveries.length + 1
+                }
+            });
+
+        } catch (error) {
+            console.error('Error submitting delivery:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to submit delivery',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    };
+
+
+
+    // POST /gigs/deliveries/:id/review - Review a delivery (brand only)
+    reviewDelivery = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            const { error, value } = ApplicationController.reviewDeliverySchema.validate(req.body);
+            if (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: `${error.details.map(d => d.message).join(', ')}`,
+                    details: error.details.map(d => d.message)
+                });
+            }
+
+            // Get the delivery with related data
+            const delivery = await this.prisma.gigDelivery.findUnique({
+                where: { id },
+                include: {
+                    gig: true,
+                    application: true
+                }
+            });
+
+            if (!delivery) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Delivery not found'
+                });
+            }
+
+            // Check if user owns the gig
+            if (delivery.gig.postedById !== userId) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You can only review deliveries for your own gigs'
+                });
+            }
+
+            if (delivery.status !== 'PENDING') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Delivery has already been reviewed'
+                });
+            }
+
+            let updatedDelivery;
+            let applicationStatus = delivery.application.status;
+
+            if (value.status === 'APPROVED') {
+                // If approved, creator can now post publicly and submit final URL
+                updatedDelivery = await this.prisma.gigDelivery.update({
+                    where: { id },
+                    data: {
+                        status: 'APPROVED',
+                        feedback: value.feedback,
+                        reviewedAt: new Date()
+                    }
+                });
+
+                // Update application status to allow final submission
+                applicationStatus = 'DELIVERED'; // Reset to delivered so they can submit final work
+                await this.prisma.application.update({
+                    where: { id: delivery.applicationId },
+                    data: { status: applicationStatus }
+                });
+
+                // Schedule deletion of delivery files after 24 hours
+                await this.scheduleDeliveryCleanup(delivery.applicationId);
+
+            } else {
+                // Handle REJECTED status
+                updatedDelivery = await this.prisma.gigDelivery.update({
+                    where: { id },
+                    data: {
+                        status: 'REJECTED',
+                        feedback: value.feedback,
+                        reviewedAt: new Date()
+                    }
+                });
+
+                // Keep application in delivery submitted state for revision
+                applicationStatus = 'APPROVED'; // Reset to approved so they can submit DELIVERY AGAIN
+                await this.prisma.application.update({
+                    where: { id: delivery.applicationId },
+                    data: { status: applicationStatus }
+                });
+            }
+
+            // Publish events
+            await this.publishEvent('delivery_reviewed', {
+                gigId: delivery.gigId,
+                gigTitle: delivery.gig.title,
+                deliveryId: id,
+                applicationId: delivery.applicationId,
+                submittedById: delivery.submittedById,
+                recipientId: delivery.submittedById,
+                reviewStatus: value.status,
+                feedback: value.feedback,
+                gigOwnerId: userId,
+                canPostPublicly: value.status === 'APPROVED',
+                message: `Your delivery for "${delivery.gig.title}" has been ${value.status.toLowerCase()}${value.status === 'APPROVED' ? '. You can now post it publicly and submit the final URL.' : '. Please make revisions and submit a new delivery.'}`
+            });
+
+            // Invalidate caches
+            await this.cache.invalidateApplication(delivery.applicationId, delivery.gigId, delivery.submittedById);
+            await this.cache.invalidateGig(delivery.gigId, userId);
+
+            res.json({
+                success: true,
+                message: `Delivery ${value.status.toLowerCase()} successfully`,
+                data: {
+                    delivery: updatedDelivery,
+                    canCreatorPostPublicly: value.status === 'APPROVED',
+                    nextStep: value.status === 'APPROVED'
+                        ? 'Creator can now post the content publicly and submit the URL'
+                        : 'Creator should make revisions and submit a new delivery'
+                }
+            });
+
+        } catch (error) {
+            console.error('Error reviewing delivery:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to review delivery'
+            });
+        }
+    };
+
+    // Helper method to schedule delivery cleanup after 24 hours
+    scheduleDeliveryCleanup = async (applicationId) => {
+        try {
+            // Create a cleanup record that will be processed by a background job
+            await this.prisma.gigDeliveryCleanup.create({
+                data: {
+                    applicationId: applicationId,
+                    scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+                    status: 'SCHEDULED'
+                }
+            });
+
+            console.log(`📅 Scheduled delivery cleanup for application ${applicationId} in 24 hours`);
+        } catch (error) {
+            console.error('Error scheduling delivery cleanup:', error);
+        }
+    };
+
     reviewSubmission = async (req, res) => {
         try {
             const { id } = req.params;
-            const { error, value } = ApplicationController.reviewSubmissionSchema.validate(req.body);
+            const { error, value } = ApplicationController.reviewStatusSchema.validate(req.body);
             console.log('reviewSubmission validation result:', { error, value });
             if (error) {
                 return res.status(400).json({
@@ -1569,8 +2088,8 @@ class ApplicationController {
                             }
                         });
 
-                    } else if (value.status === 'REVISION') {
-                        // Revert application status back to APPROVED for revision
+                    } else {
+                        // Handle REJECTED status - revert application status back to APPROVED for revision
                         await tx.application.update({
                             where: { id: submission.applicationId },
                             data: { status: 'APPROVED' }
@@ -1581,7 +2100,7 @@ class ApplicationController {
                             where: { applicationId: submission.applicationId },
                             update: {
                                 workReviewedAt: new Date(),
-                                submissionStatus: 'REVISION',
+                                submissionStatus: 'REJECTED',
                                 revisionCount: { increment: 1 },
                                 lastActivityAt: new Date()
                             },
@@ -1595,42 +2114,13 @@ class ApplicationController {
                                 appliedAt: submission.application?.appliedAt || new Date(),
                                 workSubmittedAt: submission.submittedAt,
                                 workReviewedAt: new Date(),
-                                submissionStatus: 'REVISION',
+                                submissionStatus: 'REJECTED',
                                 revisionCount: 1,
                                 lastActivityAt: new Date(),
                                 applicationStatus: 'APPROVED' // Since application is reverted
                             }
                         });
 
-                    } else if (value.status === 'REJECTED') {
-                        await tx.application.update({
-                            where: { id: submission.applicationId },
-                            data: { status: 'APPROVED' } // Allow re-submission
-                        });
-
-                        // Update work history for rejection
-                        await tx.applicationWorkHistory.upsert({
-                            where: { applicationId: submission.applicationId },
-                            update: {
-                                workReviewedAt: new Date(),
-                                submissionStatus: 'REJECTED',
-                                lastActivityAt: new Date()
-                            },
-                            create: {
-                                applicationId: submission.applicationId,
-                                gigId: submission.gigId,
-                                applicantId: submission.submittedById,
-                                gigOwnerId: submission.gig.postedById,
-                                gigPrice: submission.gig.budgetMax || submission.gig.budgetMin,
-                                quotedPrice: submission.application?.quotedPrice,
-                                appliedAt: submission.application?.appliedAt || new Date(),
-                                workSubmittedAt: submission.submittedAt,
-                                workReviewedAt: new Date(),
-                                submissionStatus: 'REJECTED',
-                                lastActivityAt: new Date(),
-                                applicationStatus: 'APPROVED' // Since application is reverted
-                            }
-                        });
                     }
                 });
             }
@@ -1773,7 +2263,7 @@ class ApplicationController {
                 reviewMessage = `Great news! Your submission for "${submission.gig.title}" has been approved${value.rating ? (` with a ${value.rating}-star rating`) : ''}`;
             } else if (value.status === 'REJECTED') {
                 reviewMessage = `Your submission for "${submission.gig.title}" needs improvement. Please check the feedback and resubmit.`;
-            } else if (value.status === 'REVISION') {
+            } else {
                 reviewMessage = `Your submission for "${submission.gig.title}" requires revision. Please check the feedback and make necessary changes.`;
             }
 
@@ -1811,6 +2301,225 @@ class ApplicationController {
                 success: false,
                 error: 'Failed to review submission'
             });
+        }
+    };
+
+    // GET /gigs/:id/deliveries - Get deliveries for a gig (brand/creator)
+    getGigDeliveries = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            // Check if user has access to this gig
+            const gig = await this.prisma.gig.findUnique({
+                where: { id }
+            });
+
+            if (!gig) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Gig not found'
+                });
+            }
+
+            const isGigOwner = gig.postedById === userId;
+
+            // Check if user is applicant
+            const application = await this.prisma.application.findFirst({
+                where: {
+                    gigId: id,
+                    applicantId: userId
+                }
+            });
+
+            if (!isGigOwner && !application) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You do not have access to this gig\'s deliveries'
+                });
+            }
+
+            // Get deliveries with pagination
+            const { page = 1, limit = 20, status } = req.query;
+            const skip = (page - 1) * limit;
+
+            const where = { gigId: id };
+
+            // If not gig owner, only show own deliveries
+            if (!isGigOwner && application) {
+                where.applicationId = application.id;
+            }
+
+            // Add status filter if provided
+            if (status) {
+                where.status = status;
+            }
+
+            const [deliveries, total] = await Promise.all([
+                this.prisma.gigDelivery.findMany({
+                    where,
+                    select: {
+                        id: true,
+                        gigId: true,
+                        applicationId: true,
+                        submittedById: true,
+                        submittedByType: true,
+                        title: true,
+                        description: true,
+                        files: true,
+                        fileNames: true,
+                        fileSizes: true,
+                        mimeTypes: true,
+                        version: true,
+                        status: true,
+                        submittedAt: true,
+                        reviewedAt: true,
+                        feedback: true,
+                        notes: true,
+                        expiresAt: true,
+                        application: {
+                            select: {
+                                id: true,
+                                applicantId: true,
+                                applicantType: true
+                            }
+                        }
+                    },
+                    orderBy: { submittedAt: 'desc' },
+                    skip,
+                    take: parseInt(limit)
+                }),
+                this.prisma.gigDelivery.count({ where })
+            ]);
+
+            // ✅ IMPORTANT: Generate signed URLs for all files
+            const { getDownloadUrl } = require('../services/r2.services');
+
+            // Transform deliveries to include signed URLs
+            const transformedDeliveries = await Promise.all(
+                deliveries.map(async (delivery) => {
+                    // Generate signed URLs for all files in this delivery
+                    const signedUrls = await Promise.all(
+                        delivery.files.map(fileKey => getDownloadUrl(fileKey, 86400))
+                    );
+
+                    return {
+                        ...delivery,
+                        fileDetails: delivery.fileNames.map((fileName, index) => ({
+                            url: signedUrls[index], // ← Use SIGNED URL instead of key
+                            signedUrl: signedUrls[index], // ← Also include as signedUrl
+                            key: delivery.files[index], // ← Store original key for reference
+                            name: fileName || 'Unknown',
+                            size: delivery.fileSizes?.[index] || 0,
+                            mimeType: delivery.mimeTypes?.[index] || 'application/octet-stream',
+                            formattedSize: formatFileSize(delivery.fileSizes?.[index] || 0)
+                        }))
+                    };
+                })
+            );
+
+            res.json({
+                success: true,
+                data: {
+                    deliveries: transformedDeliveries,
+                    pagination: {
+                        page: parseInt(page),
+                        limit: parseInt(limit),
+                        total,
+                        pages: Math.ceil(total / limit)
+                    },
+                    userRole: isGigOwner ? 'brand' : 'creator'
+                }
+            });
+
+        } catch (error) {
+            console.error('Error fetching deliveries:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch deliveries'
+            });
+        }
+    };
+
+
+    // Background job method to clean up deliveries (should be called by a cron job)
+    static cleanupExpiredDeliveries = async () => {
+        try {
+            const prisma = databaseService.getClient();
+
+            // Find all scheduled cleanups that are due
+            const dueCleanups = await prisma.gigDeliveryCleanup.findMany({
+                where: {
+                    scheduledAt: { lte: new Date() },
+                    status: 'SCHEDULED'
+                },
+                include: {
+                    application: {
+                        include: {
+                            deliveries: {
+                                where: {
+                                    status: { in: ['PENDING', 'REJECTED', 'APPROVED'] }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            console.log(`🧹 Processing ${dueCleanups.length} delivery cleanup tasks`);
+
+            for (const cleanup of dueCleanups) {
+                try {
+                    const { deleteFile } = require('../services/r2.services');
+
+                    // Delete all delivery files for this application
+                    for (const delivery of cleanup.application.deliveries) {
+                        if (delivery.fileKey) {
+                            try {
+                                await deleteFile(delivery.fileKey);
+                                console.log(`🗑️ Deleted file: ${delivery.fileKey}`);
+                            } catch (fileError) {
+                                console.error(`Error deleting file ${delivery.fileKey}:`, fileError);
+                            }
+                        }
+                    }
+
+                    // Delete delivery records
+                    await prisma.gigDelivery.deleteMany({
+                        where: { applicationId: cleanup.applicationId }
+                    });
+
+                    // Mark cleanup as completed
+                    await prisma.gigDeliveryCleanup.update({
+                        where: { id: cleanup.id },
+                        data: {
+                            status: 'COMPLETED',
+                            completedAt: new Date()
+                        }
+                    });
+
+                    console.log(`✅ Completed cleanup for application ${cleanup.applicationId}`);
+
+                } catch (cleanupError) {
+                    console.error(`Error processing cleanup ${cleanup.id}:`, cleanupError);
+
+                    // Mark as failed
+                    await prisma.gigDeliveryCleanup.update({
+                        where: { id: cleanup.id },
+                        data: { status: 'FAILED' }
+                    });
+                }
+            }
+
+        } catch (error) {
+            console.error('Error in cleanup job:', error);
         }
     };
 
@@ -3126,5 +3835,223 @@ class ApplicationController {
             });
         }
     };
+
+    // GET /gigs/:gigId/applications/:applicationId - Get specific application details
+    getApplicationById = async (req, res) => {
+        try {
+            const { gigId, applicationId } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            // Find the application with related data
+            const application = await this.prisma.application.findUnique({
+                where: { id: applicationId },
+                include: {
+                    gig: {
+                        select: {
+                            id: true,
+                            title: true,
+                            description: true,
+                            status: true,
+                            postedById: true,
+                            category: true,
+                            budgetMin: true,
+                            budgetMax: true,
+                            deadline: true
+                        }
+                    }
+                }
+            });
+
+            if (!application) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Application not found'
+                });
+            }
+
+            // Verify the application belongs to the specified gig
+            if (application.gigId !== gigId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Application does not belong to this gig'
+                });
+            }
+
+            // Check if user has permission to view this application
+            const isGigOwner = application.gig.postedById === userId;
+            const isApplicant = application.applicantId === userId;
+
+            if (!isGigOwner && !isApplicant) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to view this application'
+                });
+            }
+
+            // Fetch applicant data for display
+            const applicantData = await this.fetchUserData(application.applicantId);
+
+            // Format the response
+            const formattedApplication = {
+                ...application,
+                applicant: applicantData,
+                userRole: isGigOwner ? 'gig_owner' : 'applicant'
+            };
+
+            res.json({
+                success: true,
+                data: formattedApplication
+            });
+
+        } catch (error) {
+            console.error('Error fetching application:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch application'
+            });
+        }
+    };
+
+    // GET /applications/:applicationId/deliveries - Get deliveries for a specific application
+    getApplicationDeliveries = async (req, res) => {
+        try {
+            const { applicationId } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            // Find the application
+            const application = await this.prisma.application.findUnique({
+                where: { id: applicationId },
+                include: {
+                    gig: {
+                        select: {
+                            id: true,
+                            title: true,
+                            postedById: true
+                        }
+                    }
+                }
+            });
+
+            if (!application) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Application not found'
+                });
+            }
+
+            const isGigOwner = application.gig.postedById === userId;
+            const isApplicant = application.applicantId === userId;
+
+            if (!isGigOwner && !isApplicant) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to view these deliveries'
+                });
+            }
+
+            const { page = 1, limit = 20, status } = req.query;
+            const skip = (page - 1) * limit;
+
+            const where = { applicationId };
+            if (status) {
+                where.status = status;
+            }
+
+            const [deliveries, total] = await Promise.all([
+                this.prisma.gigDelivery.findMany({
+                    where,
+                    select: {
+                        id: true,
+                        gigId: true,
+                        applicationId: true,
+                        submittedById: true,
+                        submittedByType: true,
+                        title: true,
+                        description: true,
+                        files: true,
+                        fileNames: true,
+                        fileSizes: true,
+                        mimeTypes: true,
+                        version: true,
+                        status: true,
+                        submittedAt: true,
+                        reviewedAt: true,
+                        feedback: true,
+                        notes: true,
+                        expiresAt: true
+                    },
+                    orderBy: { submittedAt: 'desc' },
+                    skip,
+                    take: parseInt(limit)
+                }),
+                this.prisma.gigDelivery.count({ where })
+            ]);
+
+            const { getDownloadUrl } = require('../services/r2.services');
+
+            // ✅ Generate ALL signed URLs in parallel
+            const transformedDeliveries = await Promise.all(
+                deliveries.map(async (delivery) => {
+                    const signedUrls = await Promise.all(
+                        delivery.files.map(fileKey => getDownloadUrl(fileKey, 86400))
+                    );
+
+                    return {
+                        ...delivery,
+                        fileDetails: delivery.fileNames.map((fileName, index) => ({
+                            url: signedUrls[index], // ← Now it's a real URL, not a Promise
+                            name: fileName || 'Unknown',
+                            size: delivery.fileSizes?.[index] || 0,
+                            mimeType: delivery.mimeTypes?.[index] || 'application/octet-stream',
+                            formattedSize: formatFileSize(delivery.fileSizes?.[index] || 0)
+                        }))
+                    };
+                })
+            );
+
+            res.json({
+                success: true,
+                data: {
+                    deliveries: transformedDeliveries,
+                    application: {
+                        id: application.id,
+                        gigId: application.gigId,
+                        gigTitle: application.gig.title,
+                        applicantId: application.applicantId,
+                        status: application.status
+                    },
+                    pagination: {
+                        page: parseInt(page),
+                        limit: parseInt(limit),
+                        total,
+                        pages: Math.ceil(total / limit)
+                    },
+                    userRole: isGigOwner ? 'gig_owner' : 'applicant'
+                }
+            });
+
+        } catch (error) {
+            console.error('Error fetching application deliveries:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch application deliveries'
+            });
+        }
+    };
+
 }
 module.exports = new ApplicationController();

@@ -113,6 +113,10 @@ class RabbitMQService {
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted');
         // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed');
+
+        // NEW: Bind to delivery workflow events
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'delivery_submitted');
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'delivery_reviewed');
         // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'application_confirmed');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'new_application_received');
@@ -306,6 +310,12 @@ class RabbitMQService {
                 break;
             case 'work_submitted':
                 await consumer.handleWorkSubmitted(eventData);
+                break;
+            case 'delivery_submitted':
+                await consumer.handleDeliverySubmitted(eventData);
+                break;
+            case 'delivery_reviewed':
+                await consumer.handleDeliveryReviewed(eventData);
                 break;
             case 'gig_invitation_accepted':
                 await consumer.handleGigInvitationAccepted(eventData);

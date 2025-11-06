@@ -1151,6 +1151,120 @@ class NotificationConsumer {
         }
     }
 
+    // === DELIVERY EVENT HANDLERS ===
+    async handleDeliverySubmitted(eventData) {
+        try {
+            console.log('📦 [Notification Service] Handling delivery_submitted event:', eventData);
+
+            const { gigId, gigTitle, applicationId, deliveryId, submittedById, recipientId, deliveryTitle, version, message } = eventData;
+
+            // Notify the brand that delivery has been submitted for review
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'DELIVERY',
+                title: '📦 New Delivery Submitted',
+                message: message || `New delivery "${deliveryTitle}" (Version ${version}) has been submitted for "${gigTitle}". Please review and approve.`,
+                metadata: {
+                    gigId,
+                    applicationId,
+                    deliveryId,
+                    submittedById,
+                    deliveryTitle,
+                    version,
+                    eventType: 'delivery.submitted'
+                }
+            });
+
+            console.log('✅ [Notification Service] Delivery submitted notification processed successfully');
+            logger.notification('Delivery submitted notification sent', { gigId, deliveryId, submittedById, recipientId });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling delivery submitted notification:', error);
+            logger.error('Error handling delivery submitted notification:', error);
+        }
+    }
+
+    async handleDeliveryReviewed(eventData) {
+        try {
+            console.log('⭐ [Notification Service] Handling delivery_reviewed event:', eventData);
+
+            const {
+                gigId,
+                gigTitle,
+                deliveryId,
+                applicationId,
+                submittedById,
+                recipientId,
+                reviewStatus,
+                feedback,
+                gigOwnerId,
+                canPostPublicly,
+                message
+            } = eventData;
+
+            // Determine notification details based on review status
+            let title, notificationMessage, category;
+
+            switch (reviewStatus) {
+                case 'APPROVED':
+                    title = '✅ Delivery Approved!';
+                    notificationMessage = message || `Your delivery for "${gigTitle}" has been approved! You can now post it publicly and submit the final URL.`;
+                    category = 'DELIVERY_APPROVED';
+                    break;
+                case 'REJECTED':
+                    title = '❌ Delivery Rejected';
+                    notificationMessage = message || `Your delivery for "${gigTitle}" was rejected. Please submit a new delivery.`;
+                    category = 'DELIVERY_REJECTED';
+                    break;
+                case 'REVISION':
+                    title = '🔄 Delivery Needs Revision';
+                    notificationMessage = message || `Your delivery for "${gigTitle}" needs revisions. Please make changes and resubmit.`;
+                    category = 'DELIVERY_REVISION';
+                    break;
+                default:
+                    title = '📝 Delivery Reviewed';
+                    notificationMessage = message || `Your delivery for "${gigTitle}" has been reviewed.`;
+                    category = 'DELIVERY_REVIEWED';
+            }
+
+            // Add feedback to message if provided
+            if (feedback) {
+                notificationMessage += ` Feedback: ${feedback}`;
+            }
+
+            // Notify the creator about the review result
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: category,
+                title: title,
+                message: notificationMessage,
+                metadata: {
+                    gigId,
+                    deliveryId,
+                    applicationId,
+                    gigOwnerId,
+                    reviewStatus,
+                    feedback,
+                    canPostPublicly,
+                    eventType: 'delivery.reviewed'
+                }
+            });
+
+            console.log('✅ [Notification Service] Delivery reviewed notification processed successfully');
+            logger.notification('Delivery reviewed notification sent', {
+                gigId,
+                deliveryId,
+                submittedById: recipientId,
+                gigOwnerId,
+                reviewStatus
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling delivery reviewed notification:', error);
+            logger.error('Error handling delivery reviewed notification:', error);
+        }
+    }
+
     async handleApplicationConfirmed(eventData) {
         try {
             console.log('✅ [Notification Service] Handling application_confirmed event:', eventData);

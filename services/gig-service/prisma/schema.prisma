@@ -64,6 +64,7 @@ model Gig {
   // Relations
   applications  Application[]
   submissions   Submission[]
+  deliveries    GigDelivery[]
   assignment    GigAssignment?
   chats         GigChat[]
   agreedToTerms Boolean
@@ -100,6 +101,7 @@ model Application {
   // Relations
   gig           Gig       @relation(fields: [gigId], references: [id], onDelete: Cascade)
   submissions   Submission[]
+  deliveries    GigDelivery[]
   assignment    GigAssignment?
   chat          GigChat?
   agreedToTerms Boolean
@@ -408,7 +410,8 @@ enum GigStatus {
 enum ApplicationStatus {
   PENDING   // Application submitted, awaiting review
   APPROVED  // Application approved, gig assigned
-  SUBMITTED // Work has been submitted by applicant
+  DELIVERED // Delivery files submitted and approved by brand
+  SUBMITTED // Work has been submitted by applicant (final URL)
   CLOSED    // Work approved by brand, application complete
   REJECTED  // Application rejected
   WITHDRAWN // Applicant withdrew their application
@@ -454,7 +457,8 @@ enum GigType {
 enum WorkHistoryApplicationStatus {
   PENDING   // Application submitted, awaiting review
   APPROVED  // Application approved, gig assigned
-  SUBMITTED // Work has been submitted by applicant
+  DELIVERED // Delivery files submitted and approved by brand
+  SUBMITTED // Work has been submitted by applicant (final URL)
   CLOSED    // Work approved by brand, application complete
   REJECTED  // Application rejected
   WITHDRAWN // Applicant withdrew their application
@@ -481,4 +485,67 @@ enum CampaignStatus {
   PAUSED       // Campaign temporarily paused
   COMPLETED    // Campaign completed successfully
   CANCELLED    // Campaign cancelled
+}
+
+// Models for the new delivery workflow
+model GigDelivery {
+  id               String   @id @default(cuid())
+  gigId            String
+  applicationId    String
+  submittedById    String   // User who submitted the delivery
+  submittedByType  String   // "user" or "clan"
+  title            String
+  description      String?
+  files            String[] @default([]) // URLs to uploaded files
+  fileNames        String[] @default([]) // Original file names
+  fileSizes        Int[]    @default([]) // File sizes in bytes
+  mimeTypes        String[] @default([]) // MIME types of files
+  version          Int      @default(1)  // Version number (max 3)
+  status           GigDeliveryStatus @default(PENDING)
+  submittedAt      DateTime @default(now())
+  reviewedAt       DateTime?
+  feedback         String?  // Brand feedback
+  notes            String?  // Additional notes
+  expiresAt        DateTime // When files will be auto-deleted (24h from creation)
+  
+  // Relations
+  gig              Gig      @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  
+  @@index([gigId])
+  @@index([applicationId])
+  @@index([submittedById])
+  @@index([expiresAt])
+  @@map("gigDelivery")
+}
+
+model GigDeliveryCleanup {
+  id               String   @id @default(cuid())
+  deliveryId       String
+  fileUrls         String[] @default([]) // Files to be deleted
+  scheduledAt      DateTime // When cleanup should run
+  processedAt      DateTime?
+  status           GigDeliveryCleanupStatus @default(PENDING)
+  retryCount       Int      @default(0)
+  lastError        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@index([scheduledAt])
+  @@index([status])
+  @@map("gigDeliveryCleanup")
+}
+
+enum GigDeliveryStatus {
+  PENDING      // Submitted, awaiting brand review
+  APPROVED     // Approved by brand, can proceed to public submission
+  REJECTED     // Rejected, needs revision
+  EXPIRED      // Files expired and cleaned up
+}
+
+enum GigDeliveryCleanupStatus {
+  PENDING      // Cleanup scheduled but not processed
+  PROCESSING   // Currently being processed
+  COMPLETED    // Successfully cleaned up
+  FAILED       // Cleanup failed, may need retry
 }

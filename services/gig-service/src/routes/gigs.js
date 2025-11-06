@@ -96,6 +96,24 @@ router.post('/:id/assign', requireAuth, asyncHandler(applicationController.assig
 // POST /gigs/:id/submit - Submit work for a gig (assigned applicant only)
 router.post('/:id/submit', requireAuth, asyncHandler(applicationController.submitWork));
 
+// GET /applications/:applicationId/status
+router.get('/applications/:applicationId/status', requireAuth, asyncHandler(applicationController.getDeliveryStatus));
+
+// POST /gigs/:id/submit-delivery - Submit delivery files for brand review (before public submission)
+router.post('/:id/submit-delivery', requireAuth, asyncHandler(applicationController.submitDelivery));
+
+// GET /gigs/:id/deliveries - Get deliveries for a gig (brand/creator)
+router.get('/:id/deliveries', requireAuth, asyncHandler(applicationController.getGigDeliveries));
+
+// GET /gigs/:gigId/applications/:applicationId - Get specific application details
+router.get('/:gigId/applications/:applicationId', requireAuth, asyncHandler(applicationController.getApplicationById));
+
+// GET /applications/:applicationId/deliveries - Get deliveries for a specific application
+router.get('/applications/:applicationId/deliveries', requireAuth, asyncHandler(applicationController.getApplicationDeliveries));
+
+// POST /gigs/deliveries/:id/review - Review a delivery (brand only)
+router.post('/deliveries/:id/review', requireAuth, asyncHandler(applicationController.reviewDelivery));
+
 // POST /gigs/submissions/:id/review - Review a submission (gig owner only)
 router.post('/submissions/:id/review', requireAuth, asyncHandler(applicationController.reviewSubmission));
 
