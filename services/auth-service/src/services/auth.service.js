@@ -326,6 +326,8 @@ class AuthService {
             }
 
             console.log('[PROD-DEBUG] Auth Service - Looking for token in database');
+            console.log('[PROD-DEBUG] Auth Service - Database URL prefix:', process.env.DATABASE_URL?.substring(0, 50));
+
             // Find refresh token in database
             const tokenRecord = await prisma.refreshToken.findUnique({
                 where: { token: refreshToken },
@@ -337,6 +339,17 @@ class AuthService {
                 console.log('[PROD-DEBUG] Auth Service - Token expires at:', tokenRecord.expiresAt);
                 console.log('[PROD-DEBUG] Auth Service - Current time:', new Date());
                 console.log('[PROD-DEBUG] Auth Service - Token expired:', tokenRecord.expiresAt < new Date());
+                console.log('[PROD-DEBUG] Auth Service - User ID from token:', tokenRecord.userId);
+            } else {
+                // Let's check if ANY refresh tokens exist for debugging
+                const allTokensCount = await prisma.refreshToken.count();
+                console.log('[PROD-DEBUG] Auth Service - Total refresh tokens in DB:', allTokensCount);
+
+                // Check if the user exists
+                const userExists = await prisma.user.findFirst({
+                    where: { id: decoded.userId }
+                });
+                console.log('[PROD-DEBUG] Auth Service - User exists:', !!userExists);
             }
 
             if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
@@ -537,14 +550,22 @@ class AuthService {
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
-            await prisma.refreshToken.create({
+            console.log('[PROD-DEBUG] Login - Creating refresh token in database');
+            console.log('[PROD-DEBUG] Login - Token length:', refreshToken.length);
+            console.log('[PROD-DEBUG] Login - User ID:', user.id);
+            console.log('[PROD-DEBUG] Login - Expires at:', expiresAt);
+
+            const tokenRecord = await prisma.refreshToken.create({
                 data: {
                     id: uuidv4(), token: refreshToken,
                     userId: user.id,
                     expiresAt,
                     createdAt: new Date()
                 }
-            });            // Cache user session in Redis
+            });
+
+            console.log('[PROD-DEBUG] Login - Token record created with ID:', tokenRecord.id);
+            console.log('[PROD-DEBUG] Login - Token stored successfully');            // Cache user session in Redis
             if (isConnected()) {
                 const cacheKey = `user_session:${user.id}`;
                 const sessionData = {
