@@ -282,7 +282,7 @@ const startServer = async () => {
 
         console.log('🔧 Starting HTTP server...');
         const server = app.listen(PORT, () => {
-            console.log('🔧 HTTP server started successfully');
+            console.log('🔧 HTTP server started successfully - CLEAN VERSION');
             logger.info(`🚀 50BraIns Auth Service running on port ${PORT} in ${NODE_ENV} mode`);
             logger.info(`📊 Health check: http://localhost:${PORT}/health`);
             logger.info(`📋 API Documentation: http://localhost:${PORT}/api-docs`);
