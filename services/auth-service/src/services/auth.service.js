@@ -308,28 +308,16 @@ class AuthService {
     async refreshToken(refreshToken) {
         try {
             if (!refreshToken) {
-                console.log('[PROD-DEBUG] Auth Service - No refresh token provided');
                 throw new AuthError('Refresh token is required');
             }
-
-            console.log('[PROD-DEBUG] Auth Service - Refresh token length:', refreshToken.length);
-            console.log('[PROD-DEBUG] Auth Service - JWT_REFRESH_SECRET defined:', !!process.env.JWT_REFRESH_SECRET);
 
             // Verify refresh token
             let decoded;
             try {
                 decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-                console.log('[PROD-DEBUG] Auth Service - JWT verification successful');
             } catch (error) {
-                console.log('[PROD-DEBUG] Auth Service - JWT verification failed:', error.message);
                 throw new AuthError('Invalid refresh token');
             }
-
-            console.log('[PROD-DEBUG] Auth Service - Looking for token in database');
-            console.log('[PROD-DEBUG] Auth Service - Database URL prefix:', process.env.DATABASE_URL?.substring(0, 50));
-            console.log('[PROD-DEBUG] Auth Service - Looking for token (first 20 chars):', refreshToken.substring(0, 20));
-            console.log('[PROD-DEBUG] Auth Service - Requested token length:', refreshToken.length);
-            console.log('[PROD-DEBUG] Auth Service - Requested token type:', typeof refreshToken);
 
             // Find refresh token in database
             const tokenRecord = await prisma.refreshToken.findUnique({
@@ -337,71 +325,7 @@ class AuthService {
                 include: { user: true }
             });
 
-            console.log('[PROD-DEBUG] Auth Service - Token record found:', !!tokenRecord);
-            if (tokenRecord) {
-                console.log('[PROD-DEBUG] Auth Service - Token expires at:', tokenRecord.expiresAt);
-                console.log('[PROD-DEBUG] Auth Service - Current time:', new Date());
-                console.log('[PROD-DEBUG] Auth Service - Token expired:', tokenRecord.expiresAt < new Date());
-                console.log('[PROD-DEBUG] Auth Service - User ID from token:', tokenRecord.userId);
-            } else {
-                // Let's check if ANY refresh tokens exist for debugging
-                const allTokensCount = await prisma.refreshToken.count();
-                console.log('[PROD-DEBUG] Auth Service - Total refresh tokens in DB:', allTokensCount);
-
-                // Check if the user exists
-                const userExists = await prisma.user.findFirst({
-                    where: { id: decoded.userId }
-                });
-                console.log('[PROD-DEBUG] Auth Service - User exists:', !!userExists);
-
-                // Let's see what tokens exist for this user
-                const userTokens = await prisma.refreshToken.findMany({
-                    where: { userId: decoded.userId },
-                    select: { token: true, createdAt: true, expiresAt: true },
-                    orderBy: { createdAt: 'desc' },
-                    take: 3
-                });
-                console.log('[PROD-DEBUG] Auth Service - User tokens count:', userTokens.length);
-                if (userTokens.length > 0) {
-                    console.log('[PROD-DEBUG] Auth Service - Latest user token (first 20 chars):', userTokens[0].token.substring(0, 20));
-                    console.log('[PROD-DEBUG] Auth Service - Latest user token length:', userTokens[0].token.length);
-                    console.log('[PROD-DEBUG] Auth Service - Latest token created:', userTokens[0].createdAt);
-                    console.log('[PROD-DEBUG] Auth Service - Token equality check:', userTokens[0].token === refreshToken);
-
-                    // Check if we have the exact token in ANY position
-                    const exactMatch = userTokens.find(t => t.token === refreshToken);
-                    console.log('[PROD-DEBUG] Auth Service - Exact match in user tokens:', !!exactMatch);
-
-                    // Check character-by-character comparison for first few chars
-                    const storedToken = userTokens[0].token;
-                    const requestedToken = refreshToken;
-                    console.log('[PROD-DEBUG] Auth Service - First char comparison:');
-                    for (let i = 0; i < Math.min(5, storedToken.length, requestedToken.length); i++) {
-                        console.log(`[PROD-DEBUG] Auth Service - Char ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
-                    }
-
-                    // Check middle section for differences
-                    console.log('[PROD-DEBUG] Auth Service - Middle comparison (chars 125-130):');
-                    const midPoint = Math.floor(storedToken.length / 2);
-                    for (let i = midPoint; i < Math.min(midPoint + 5, storedToken.length, requestedToken.length); i++) {
-                        if (storedToken[i] !== requestedToken[i]) {
-                            console.log(`[PROD-DEBUG] Auth Service - DIFFERENCE at char ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
-                        }
-                    }
-
-                    // Find first difference
-                    for (let i = 0; i < Math.min(storedToken.length, requestedToken.length); i++) {
-                        if (storedToken[i] !== requestedToken[i]) {
-                            console.log(`[PROD-DEBUG] Auth Service - FIRST DIFFERENCE at position ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
-                            console.log(`[PROD-DEBUG] Auth Service - Context: stored="${storedToken.substring(Math.max(0, i - 5), i + 5)}" vs requested="${requestedToken.substring(Math.max(0, i - 5), i + 5)}"`);
-                            break;
-                        }
-                    }
-                }
-            }
-
             if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
-                console.log('[PROD-DEBUG] Auth Service - Token invalid or expired');
                 throw new AuthError('Invalid or expired refresh token');
             }
 
@@ -410,7 +334,9 @@ class AuthService {
             }
 
             // Generate new tokens
-            const tokens = await this.generateTokens(tokenRecord.user);            // Delete old refresh token
+            const tokens = await this.generateTokens(tokenRecord.user);
+
+            // Delete old refresh token
             await prisma.refreshToken.delete({
                 where: { id: tokenRecord.id }
             });
