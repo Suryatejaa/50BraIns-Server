@@ -12,7 +12,7 @@ const rabbitmqService = require('./utils/rabbitmq');
 require('dotenv').config();
 
 // Setup global console compression (must be early in startup)
-const {setupGlobalConsoleCompression} = require('../src/utils/globalConsoleLogger')
+const { setupGlobalConsoleCompression } = require('../src/utils/globalConsoleLogger')
 // Temporarily disable compression for debugging
 if (process.env.NODE_ENV !== 'production') {
     setupGlobalConsoleCompression('auth-service');
@@ -291,8 +291,10 @@ const startServer = async () => {
                 logger.info(`🔐 Ready for authentication requests!`);
             }
 
-            // Mark end of startup phase for console compression
-            console.markStartupEnd('Auth Service', PORT);
+            // Mark end of startup phase for console compression (only if available)
+            if (typeof console.markStartupEnd === 'function') {
+                console.markStartupEnd('Auth Service', PORT);
+            }
         });
 
         console.log('🔧 Starting RabbitMQ connection...');
