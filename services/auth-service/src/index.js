@@ -335,7 +335,7 @@ const startServer = async () => {
             }
         });
 
-        console.log('🔧 Server initialization completed');
+        console.log('🔧 Server initialization completed - v2');
 
     } catch (error) {
         console.error('🔧 Server initialization failed:', error);

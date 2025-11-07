@@ -174,7 +174,7 @@ const login = catchAsync(async (req, res) => {
         domain: isProduction ? process.env.COOKIE_DOMAIN || '.50brains.in' : undefined  // Configurable domain
     };
 
-    const cookieDebugInfo = {
+    console.log('🍪 Cookie Configuration:', {
         isProduction,
         domain: cookieOptions.domain,
         secure: cookieOptions.secure,
@@ -182,15 +182,7 @@ const login = catchAsync(async (req, res) => {
         actualDomain: req.get('host'),
         origin: req.get('origin'),
         COOKIE_DOMAIN_ENV: process.env.COOKIE_DOMAIN
-    };
-    console.log('🍪 Cookie Configuration:', cookieDebugInfo);
-    // Explicit production debug (bypasses compression)
-    if (process.env.NODE_ENV === 'production') {
-        console.log('[PROD-DEBUG] Login Cookie - Domain:', cookieOptions.domain);
-        console.log('[PROD-DEBUG] Login Cookie - Secure:', cookieOptions.secure);
-        console.log('[PROD-DEBUG] Login Cookie - SameSite:', cookieOptions.sameSite);
-        console.log('[PROD-DEBUG] Login Cookie - ENV Domain:', process.env.COOKIE_DOMAIN);
-    }
+    });
 
     // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', result.tokens.refreshToken, {
