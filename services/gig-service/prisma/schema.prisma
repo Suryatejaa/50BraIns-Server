@@ -536,6 +536,8 @@ model GigDeliveryCleanup {
   @@map("gigDeliveryCleanup")
 }
 
+
+
 enum GigDeliveryStatus {
   PENDING      // Submitted, awaiting brand review
   APPROVED     // Approved by brand, can proceed to public submission
