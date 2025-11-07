@@ -327,6 +327,7 @@ class AuthService {
 
             console.log('[PROD-DEBUG] Auth Service - Looking for token in database');
             console.log('[PROD-DEBUG] Auth Service - Database URL prefix:', process.env.DATABASE_URL?.substring(0, 50));
+            console.log('[PROD-DEBUG] Auth Service - Looking for token (first 20 chars):', refreshToken.substring(0, 20));
 
             // Find refresh token in database
             const tokenRecord = await prisma.refreshToken.findUnique({
@@ -350,9 +351,20 @@ class AuthService {
                     where: { id: decoded.userId }
                 });
                 console.log('[PROD-DEBUG] Auth Service - User exists:', !!userExists);
-            }
 
-            if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
+                // Let's see what tokens exist for this user
+                const userTokens = await prisma.refreshToken.findMany({
+                    where: { userId: decoded.userId },
+                    select: { token: true, createdAt: true, expiresAt: true },
+                    orderBy: { createdAt: 'desc' },
+                    take: 3
+                });
+                console.log('[PROD-DEBUG] Auth Service - User tokens count:', userTokens.length);
+                if (userTokens.length > 0) {
+                    console.log('[PROD-DEBUG] Auth Service - Latest user token (first 20 chars):', userTokens[0].token.substring(0, 20));
+                    console.log('[PROD-DEBUG] Auth Service - Latest token created:', userTokens[0].createdAt);
+                }
+            } if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
                 console.log('[PROD-DEBUG] Auth Service - Token invalid or expired');
                 throw new AuthError('Invalid or expired refresh token');
             }
@@ -554,10 +566,12 @@ class AuthService {
             console.log('[PROD-DEBUG] Login - Token length:', refreshToken.length);
             console.log('[PROD-DEBUG] Login - User ID:', user.id);
             console.log('[PROD-DEBUG] Login - Expires at:', expiresAt);
+            console.log('[PROD-DEBUG] Login - Actual token (first 20 chars):', refreshToken.substring(0, 20));
 
             const tokenRecord = await prisma.refreshToken.create({
                 data: {
-                    id: uuidv4(), token: refreshToken,
+                    id: uuidv4(),
+                    token: refreshToken,
                     userId: user.id,
                     expiresAt,
                     createdAt: new Date()
@@ -565,7 +579,8 @@ class AuthService {
             });
 
             console.log('[PROD-DEBUG] Login - Token record created with ID:', tokenRecord.id);
-            console.log('[PROD-DEBUG] Login - Token stored successfully');            // Cache user session in Redis
+            console.log('[PROD-DEBUG] Login - Token stored successfully');
+            console.log('[PROD-DEBUG] Login - Stored token (first 20 chars):', tokenRecord.token.substring(0, 20));            // Cache user session in Redis
             if (isConnected()) {
                 const cacheKey = `user_session:${user.id}`;
                 const sessionData = {
