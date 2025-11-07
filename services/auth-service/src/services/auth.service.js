@@ -367,11 +367,11 @@ class AuthService {
                     console.log('[PROD-DEBUG] Auth Service - Latest user token length:', userTokens[0].token.length);
                     console.log('[PROD-DEBUG] Auth Service - Latest token created:', userTokens[0].createdAt);
                     console.log('[PROD-DEBUG] Auth Service - Token equality check:', userTokens[0].token === refreshToken);
-                    
+
                     // Check if we have the exact token in ANY position
                     const exactMatch = userTokens.find(t => t.token === refreshToken);
                     console.log('[PROD-DEBUG] Auth Service - Exact match in user tokens:', !!exactMatch);
-                    
+
                     // Check character-by-character comparison for first few chars
                     const storedToken = userTokens[0].token;
                     const requestedToken = refreshToken;
