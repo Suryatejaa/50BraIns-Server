@@ -579,7 +579,6 @@ class AuthService {
                 jti: uuidv4() // JWT ID for uniqueness
             };
 
-            console.log(`JWT Secret: ${process.env.JWT_SECRET}`);
             // Generate access token
             const accessToken = jwt.sign(
                 payload,
@@ -589,7 +588,7 @@ class AuthService {
 
             // Generate refresh token
             const refreshToken = jwt.sign(
-                { userId: user.id, tokenId: uuidv4() },
+                { userId: user.id },
                 process.env.JWT_REFRESH_SECRET,
                 { expiresIn: this.refreshTokenExpiry }
             );
@@ -597,13 +596,6 @@ class AuthService {
             // Store refresh token in database
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
-
-            console.log('[PROD-DEBUG] Login - Creating refresh token in database');
-            console.log('[PROD-DEBUG] Login - Token length:', refreshToken.length);
-            console.log('[PROD-DEBUG] Login - User ID:', user.id);
-            console.log('[PROD-DEBUG] Login - Expires at:', expiresAt);
-            console.log('[PROD-DEBUG] Login - Actual token (first 20 chars):', refreshToken.substring(0, 20));
-            console.log('[PROD-DEBUG] Login - About to store token...');
 
             const tokenRecord = await prisma.refreshToken.create({
                 data: {
@@ -613,19 +605,7 @@ class AuthService {
                     expiresAt,
                     createdAt: new Date()
                 }
-            });
-
-            console.log('[PROD-DEBUG] Login - Token record created with ID:', tokenRecord.id);
-            console.log('[PROD-DEBUG] Login - Token stored successfully');
-            console.log('[PROD-DEBUG] Login - Stored token (first 20 chars):', tokenRecord.token.substring(0, 20));
-            console.log('[PROD-DEBUG] Login - Stored token length:', tokenRecord.token.length);
-            console.log('[PROD-DEBUG] Login - Token match check (generated vs stored):', tokenRecord.token === refreshToken);
-
-            // Check if there are other tokens for this user that might interfere
-            const existingTokensCount = await prisma.refreshToken.count({
-                where: { userId: user.id }
-            });
-            console.log('[PROD-DEBUG] Login - Total tokens for user after creation:', existingTokensCount);            // Cache user session in Redis
+            });            // Cache user session in Redis
             if (isConnected()) {
                 const cacheKey = `user_session:${user.id}`;
                 const sessionData = {
