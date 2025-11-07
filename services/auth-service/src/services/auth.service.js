@@ -328,6 +328,8 @@ class AuthService {
             console.log('[PROD-DEBUG] Auth Service - Looking for token in database');
             console.log('[PROD-DEBUG] Auth Service - Database URL prefix:', process.env.DATABASE_URL?.substring(0, 50));
             console.log('[PROD-DEBUG] Auth Service - Looking for token (first 20 chars):', refreshToken.substring(0, 20));
+            console.log('[PROD-DEBUG] Auth Service - Requested token length:', refreshToken.length);
+            console.log('[PROD-DEBUG] Auth Service - Requested token type:', typeof refreshToken);
 
             // Find refresh token in database
             const tokenRecord = await prisma.refreshToken.findUnique({
@@ -362,7 +364,21 @@ class AuthService {
                 console.log('[PROD-DEBUG] Auth Service - User tokens count:', userTokens.length);
                 if (userTokens.length > 0) {
                     console.log('[PROD-DEBUG] Auth Service - Latest user token (first 20 chars):', userTokens[0].token.substring(0, 20));
+                    console.log('[PROD-DEBUG] Auth Service - Latest user token length:', userTokens[0].token.length);
                     console.log('[PROD-DEBUG] Auth Service - Latest token created:', userTokens[0].createdAt);
+                    console.log('[PROD-DEBUG] Auth Service - Token equality check:', userTokens[0].token === refreshToken);
+                    
+                    // Check if we have the exact token in ANY position
+                    const exactMatch = userTokens.find(t => t.token === refreshToken);
+                    console.log('[PROD-DEBUG] Auth Service - Exact match in user tokens:', !!exactMatch);
+                    
+                    // Check character-by-character comparison for first few chars
+                    const storedToken = userTokens[0].token;
+                    const requestedToken = refreshToken;
+                    console.log('[PROD-DEBUG] Auth Service - First char comparison:');
+                    for (let i = 0; i < Math.min(5, storedToken.length, requestedToken.length); i++) {
+                        console.log(`[PROD-DEBUG] Auth Service - Char ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
+                    }
                 }
             } if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
                 console.log('[PROD-DEBUG] Auth Service - Token invalid or expired');
