@@ -379,8 +379,28 @@ class AuthService {
                     for (let i = 0; i < Math.min(5, storedToken.length, requestedToken.length); i++) {
                         console.log(`[PROD-DEBUG] Auth Service - Char ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
                     }
+
+                    // Check middle section for differences
+                    console.log('[PROD-DEBUG] Auth Service - Middle comparison (chars 125-130):');
+                    const midPoint = Math.floor(storedToken.length / 2);
+                    for (let i = midPoint; i < Math.min(midPoint + 5, storedToken.length, requestedToken.length); i++) {
+                        if (storedToken[i] !== requestedToken[i]) {
+                            console.log(`[PROD-DEBUG] Auth Service - DIFFERENCE at char ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
+                        }
+                    }
+
+                    // Find first difference
+                    for (let i = 0; i < Math.min(storedToken.length, requestedToken.length); i++) {
+                        if (storedToken[i] !== requestedToken[i]) {
+                            console.log(`[PROD-DEBUG] Auth Service - FIRST DIFFERENCE at position ${i}: stored="${storedToken[i]}" (${storedToken.charCodeAt(i)}) vs requested="${requestedToken[i]}" (${requestedToken.charCodeAt(i)})`);
+                            console.log(`[PROD-DEBUG] Auth Service - Context: stored="${storedToken.substring(Math.max(0, i - 5), i + 5)}" vs requested="${requestedToken.substring(Math.max(0, i - 5), i + 5)}"`);
+                            break;
+                        }
+                    }
                 }
-            } if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
+            }
+
+            if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
                 console.log('[PROD-DEBUG] Auth Service - Token invalid or expired');
                 throw new AuthError('Invalid or expired refresh token');
             }
@@ -583,6 +603,7 @@ class AuthService {
             console.log('[PROD-DEBUG] Login - User ID:', user.id);
             console.log('[PROD-DEBUG] Login - Expires at:', expiresAt);
             console.log('[PROD-DEBUG] Login - Actual token (first 20 chars):', refreshToken.substring(0, 20));
+            console.log('[PROD-DEBUG] Login - About to store token...');
 
             const tokenRecord = await prisma.refreshToken.create({
                 data: {
@@ -596,7 +617,15 @@ class AuthService {
 
             console.log('[PROD-DEBUG] Login - Token record created with ID:', tokenRecord.id);
             console.log('[PROD-DEBUG] Login - Token stored successfully');
-            console.log('[PROD-DEBUG] Login - Stored token (first 20 chars):', tokenRecord.token.substring(0, 20));            // Cache user session in Redis
+            console.log('[PROD-DEBUG] Login - Stored token (first 20 chars):', tokenRecord.token.substring(0, 20));
+            console.log('[PROD-DEBUG] Login - Stored token length:', tokenRecord.token.length);
+            console.log('[PROD-DEBUG] Login - Token match check (generated vs stored):', tokenRecord.token === refreshToken);
+
+            // Check if there are other tokens for this user that might interfere
+            const existingTokensCount = await prisma.refreshToken.count({
+                where: { userId: user.id }
+            });
+            console.log('[PROD-DEBUG] Login - Total tokens for user after creation:', existingTokensCount);            // Cache user session in Redis
             if (isConnected()) {
                 const cacheKey = `user_session:${user.id}`;
                 const sessionData = {
