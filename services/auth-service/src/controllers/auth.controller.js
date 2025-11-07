@@ -121,6 +121,13 @@ const register = catchAsync(async (req, res) => {
             maxAge: 15 * 60 * 1000 // 15 minutes
         });
 
+        console.log('🍪 Cookies set in register:', {
+            refreshTokenCookie: 'Set',
+            accessTokenCookie: 'Set',
+            domain: cookieOptions.domain,
+            secure: cookieOptions.secure
+        });
+
         res.status(201).json({
             success: true,
             message: 'User registered successfully',
@@ -158,14 +165,23 @@ const login = catchAsync(async (req, res) => {
         email: result.user.email,
         ip: req.ip,
         userAgent: req.get('User-Agent')
-    });    // Cookie settings that support cross-origin development
+    });    // Cookie settings that support cross-origin development and production
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
         secure: isProduction,  // HTTPS only in production
         sameSite: isProduction ? 'none' : 'lax',  // Allow cross-site in production
-        domain: isProduction ? '.50brains.in' : undefined  // Share cookies across 50brains.in subdomains
+        domain: isProduction ? process.env.COOKIE_DOMAIN || '.50brains.in' : undefined  // Configurable domain
     };
+
+    console.log('🍪 Cookie Configuration:', {
+        isProduction,
+        domain: cookieOptions.domain,
+        secure: cookieOptions.secure,
+        sameSite: cookieOptions.sameSite,
+        actualDomain: req.get('host'),
+        origin: req.get('origin')
+    });
 
     // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', result.tokens.refreshToken, {
@@ -177,6 +193,13 @@ const login = catchAsync(async (req, res) => {
     res.cookie('accessToken', result.tokens.accessToken, {
         ...cookieOptions,
         maxAge: 15 * 60 * 1000 // 15 minutes (same as JWT expiry)
+    });
+
+    console.log('🍪 Login cookies set:', {
+        refreshTokenCookie: 'Set',
+        accessTokenCookie: 'Set',
+        domain: cookieOptions.domain,
+        secure: cookieOptions.secure
     });
 
     res.status(200).json({
@@ -202,8 +225,11 @@ const refresh = catchAsync(async (req, res) => {
         hasCookies: !!req.cookies,
         cookieRefreshToken: req.cookies?.refreshToken ? 'Present' : 'Missing',
         bodyRefreshToken: req.body?.refreshToken ? 'Present' : 'Missing',
-        headers: req.headers,
-        body: req.body
+        cookieNames: Object.keys(req.cookies || {}),
+        userAgent: req.get('User-Agent'),
+        host: req.get('host'),
+        origin: req.get('origin'),
+        referer: req.get('referer')
     });
 
     if (!refreshToken) {
@@ -216,14 +242,25 @@ const refresh = catchAsync(async (req, res) => {
 
     logger.info('Tokens refreshed successfully', {
         ip: req.ip
-    });    // Cookie settings that support cross-origin development
+    });
+
+    // Cookie settings that support cross-origin development and production
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',  // ✅ Allow HTTP in dev
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // ✅ Allow cross-site
-        domain: process.env.NODE_ENV === 'production' ? '.50brains.in' : undefined  // ✅ Share across subdomains
+        secure: isProduction,  // HTTPS only in production
+        sameSite: isProduction ? 'none' : 'lax',  // Allow cross-site in production
+        domain: isProduction ? process.env.COOKIE_DOMAIN || '.50brains.in' : undefined  // Configurable domain
     };
+
+    console.log('🍪 Refresh Cookie Configuration:', {
+        isProduction,
+        domain: cookieOptions.domain,
+        secure: cookieOptions.secure,
+        sameSite: cookieOptions.sameSite,
+        actualDomain: req.get('host'),
+        origin: req.get('origin')
+    });
 
     // Set new refresh token as httpOnly cookie
     res.cookie('refreshToken', tokens.refreshToken, {
@@ -235,6 +272,13 @@ const refresh = catchAsync(async (req, res) => {
     res.cookie('accessToken', tokens.accessToken, {
         ...cookieOptions,
         maxAge: 15 * 60 * 1000 // 15 minutes
+    });
+
+    console.log('🍪 Refresh tokens cookies set:', {
+        refreshTokenCookie: 'Set',
+        accessTokenCookie: 'Set',
+        domain: cookieOptions.domain,
+        secure: cookieOptions.secure
     });
 
     res.status(200).json({

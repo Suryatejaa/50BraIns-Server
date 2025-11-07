@@ -1484,9 +1484,15 @@ class ApplicationController {
 
             // Force clear gig cache to ensure status updates are visible immediately
             await this.cache.invalidatePattern(`gig:${id}*`);
+
+            // Invalidate gig submissions cache since a new submission was created
+            await this.cache.invalidatePattern(`gig_submissions:${id}:*`);
+            const gigSubmissionsCacheKey = this.cache.generateKey('gig_submissions', id, gig.postedById);
+
             try {
                 await this.cache.cacheManager.del(`gig:${id}`);
-                console.log(`🗑️ Force deleted gig cache after work submission: ${id}`);
+                await this.cache.cacheManager.del(gigSubmissionsCacheKey);
+                console.log(`🗑️ Force deleted gig cache and submissions cache after work submission: ${id}`);
             } catch (error) {
                 console.error('❌ Error force deleting gig cache:', error);
             }
@@ -1811,6 +1817,27 @@ class ApplicationController {
             try {
                 await this.cache.invalidateApplication(application.id, id, userId);
                 await this.cache.invalidateGig(id, gig.postedById);
+
+                // Invalidate delivery-specific caches
+                await this.cache.invalidatePattern(`gig_deliveries:${id}:*`);
+                await this.cache.invalidatePattern(`application_deliveries:${application.id}:*`);
+
+                // Force delete specific cache keys for getApplicationDeliveries
+                const appDeliveriesCacheKeys = [
+                    `application_deliveries:${application.id}:all_1_20`,
+                    `application_deliveries:${application.id}:PENDING_1_20`,
+                    `application_deliveries:${application.id}:APPROVED_1_20`,
+                    `application_deliveries:${application.id}:REJECTED_1_20`,
+                    `application_deliveries:${application.id}:all_1_10`,
+                    `application_deliveries:${application.id}:PENDING_1_10`,
+                    `application_deliveries:${application.id}:APPROVED_1_10`,
+                    `application_deliveries:${application.id}:REJECTED_1_10`
+                ];
+
+                for (const cacheKey of appDeliveriesCacheKeys) {
+                    await this.cache.cacheManager.del(cacheKey);
+                }
+                console.log(`🗑️ Force deleted application deliveries cache for application: ${application.id}`);
             } catch (cacheErr) {
                 console.error('Error invalidating cache:', cacheErr);
                 // Don't fail the request if cache invalidation fails
@@ -1952,6 +1979,31 @@ class ApplicationController {
             // Invalidate caches
             await this.cache.invalidateApplication(delivery.applicationId, delivery.gigId, delivery.submittedById);
             await this.cache.invalidateGig(delivery.gigId, userId);
+
+            // Invalidate delivery-specific caches
+            await this.cache.invalidatePattern(`gig_deliveries:${delivery.gigId}:*`);
+            await this.cache.invalidatePattern(`application_deliveries:${delivery.applicationId}:*`);
+
+            // Force delete specific cache keys for getApplicationDeliveries
+            const appDeliveriesCacheKeys = [
+                `application_deliveries:${delivery.applicationId}:all_1_20`,
+                `application_deliveries:${delivery.applicationId}:PENDING_1_20`,
+                `application_deliveries:${delivery.applicationId}:APPROVED_1_20`,
+                `application_deliveries:${delivery.applicationId}:REJECTED_1_20`,
+                `application_deliveries:${delivery.applicationId}:all_1_10`,
+                `application_deliveries:${delivery.applicationId}:PENDING_1_10`,
+                `application_deliveries:${delivery.applicationId}:APPROVED_1_10`,
+                `application_deliveries:${delivery.applicationId}:REJECTED_1_10`
+            ];
+
+            try {
+                for (const cacheKey of appDeliveriesCacheKeys) {
+                    await this.cache.cacheManager.del(cacheKey);
+                }
+                console.log(`🗑️ Force deleted application deliveries cache for application: ${delivery.applicationId}`);
+            } catch (error) {
+                console.error('❌ Error force deleting application deliveries cache:', error);
+            }
 
             res.json({
                 success: true,
@@ -2132,12 +2184,27 @@ class ApplicationController {
             await this.cache.invalidatePattern(`user_applications:${submission.submittedById}:*`);
             await this.cache.invalidateGig(submission.gigId, submission.gig.postedById);
 
-            // Invalidate gig submissions cache for the gig owner
+            // Invalidate gig submissions cache for the gig owner - COMPREHENSIVE FIX
             await this.cache.invalidatePattern(`gig_submissions:${submission.gigId}:*`);
-            const gigSubmissionsCacheKey = `gig_submissions:${submission.gigId}:${submission.gig.postedById}`;
+
+            // Generate proper cache key using the same method as getGigSubmissions
+            const gigSubmissionsCacheKey = this.cache.generateKey('gig_submissions', submission.gigId, submission.gig.postedById);
+
             try {
                 await this.cache.cacheManager.del(gigSubmissionsCacheKey);
                 console.log(`🗑️ Force deleted gig submissions cache after review: ${gigSubmissionsCacheKey}`);
+
+                // Also invalidate any other potential gig submission cache variations
+                const additionalCacheKeys = [
+                    `gig_submissions:${submission.gigId}`,
+                    `gig_submissions:${submission.gigId}:${submission.gig.postedById}`,
+                ];
+
+                for (const key of additionalCacheKeys) {
+                    await this.cache.cacheManager.del(key);
+                }
+
+                console.log(`🧹 Cleared additional gig submissions cache variations for gig: ${submission.gigId}`);
             } catch (error) {
                 console.error('❌ Error force deleting gig submissions cache:', error);
             }
