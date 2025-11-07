@@ -308,24 +308,39 @@ class AuthService {
     async refreshToken(refreshToken) {
         try {
             if (!refreshToken) {
+                console.log('[PROD-DEBUG] Auth Service - No refresh token provided');
                 throw new AuthError('Refresh token is required');
             }
+
+            console.log('[PROD-DEBUG] Auth Service - Refresh token length:', refreshToken.length);
+            console.log('[PROD-DEBUG] Auth Service - JWT_REFRESH_SECRET defined:', !!process.env.JWT_REFRESH_SECRET);
 
             // Verify refresh token
             let decoded;
             try {
                 decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+                console.log('[PROD-DEBUG] Auth Service - JWT verification successful');
             } catch (error) {
+                console.log('[PROD-DEBUG] Auth Service - JWT verification failed:', error.message);
                 throw new AuthError('Invalid refresh token');
             }
 
+            console.log('[PROD-DEBUG] Auth Service - Looking for token in database');
             // Find refresh token in database
             const tokenRecord = await prisma.refreshToken.findUnique({
                 where: { token: refreshToken },
                 include: { user: true }
             });
 
+            console.log('[PROD-DEBUG] Auth Service - Token record found:', !!tokenRecord);
+            if (tokenRecord) {
+                console.log('[PROD-DEBUG] Auth Service - Token expires at:', tokenRecord.expiresAt);
+                console.log('[PROD-DEBUG] Auth Service - Current time:', new Date());
+                console.log('[PROD-DEBUG] Auth Service - Token expired:', tokenRecord.expiresAt < new Date());
+            }
+
             if (!tokenRecord || tokenRecord.expiresAt < new Date()) {
+                console.log('[PROD-DEBUG] Auth Service - Token invalid or expired');
                 throw new AuthError('Invalid or expired refresh token');
             }
 

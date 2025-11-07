@@ -13,7 +13,10 @@ require('dotenv').config();
 
 // Setup global console compression (must be early in startup)
 const {setupGlobalConsoleCompression} = require('../src/utils/globalConsoleLogger')
-setupGlobalConsoleCompression('auth-service');
+// Temporarily disable compression for debugging
+if (process.env.NODE_ENV !== 'production') {
+    setupGlobalConsoleCompression('auth-service');
+}
 
 // Import configurations
 const { connectRedis } = require('./config/redis');

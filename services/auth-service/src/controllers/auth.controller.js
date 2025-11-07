@@ -174,14 +174,23 @@ const login = catchAsync(async (req, res) => {
         domain: isProduction ? process.env.COOKIE_DOMAIN || '.50brains.in' : undefined  // Configurable domain
     };
 
-    console.log('🍪 Cookie Configuration:', {
+    const cookieDebugInfo = {
         isProduction,
         domain: cookieOptions.domain,
         secure: cookieOptions.secure,
         sameSite: cookieOptions.sameSite,
         actualDomain: req.get('host'),
-        origin: req.get('origin')
-    });
+        origin: req.get('origin'),
+        COOKIE_DOMAIN_ENV: process.env.COOKIE_DOMAIN
+    };
+    console.log('🍪 Cookie Configuration:', cookieDebugInfo);
+    // Explicit production debug (bypasses compression)
+    if (process.env.NODE_ENV === 'production') {
+        console.log('[PROD-DEBUG] Login Cookie - Domain:', cookieOptions.domain);
+        console.log('[PROD-DEBUG] Login Cookie - Secure:', cookieOptions.secure);
+        console.log('[PROD-DEBUG] Login Cookie - SameSite:', cookieOptions.sameSite);
+        console.log('[PROD-DEBUG] Login Cookie - ENV Domain:', process.env.COOKIE_DOMAIN);
+    }
 
     // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', result.tokens.refreshToken, {
@@ -221,7 +230,7 @@ const refresh = catchAsync(async (req, res) => {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
     // Enhanced debugging for refresh token issues
-    console.log('🔄 Refresh Token Debug:', {
+    const debugInfo = {
         hasCookies: !!req.cookies,
         cookieRefreshToken: req.cookies?.refreshToken ? 'Present' : 'Missing',
         bodyRefreshToken: req.body?.refreshToken ? 'Present' : 'Missing',
@@ -229,8 +238,18 @@ const refresh = catchAsync(async (req, res) => {
         userAgent: req.get('User-Agent'),
         host: req.get('host'),
         origin: req.get('origin'),
-        referer: req.get('referer')
-    });
+        referer: req.get('referer'),
+        refreshTokenLength: req.cookies?.refreshToken ? req.cookies.refreshToken.length : 0,
+        NODE_ENV: process.env.NODE_ENV
+    };
+    console.log('🔄 Refresh Token Debug:', debugInfo);
+    // Explicit production debug (bypasses compression)
+    if (process.env.NODE_ENV === 'production') {
+        console.log('[PROD-DEBUG] Refresh Debug - Has Cookies:', !!req.cookies);
+        console.log('[PROD-DEBUG] Refresh Debug - Cookie Token:', req.cookies?.refreshToken ? 'PRESENT' : 'MISSING');
+        console.log('[PROD-DEBUG] Refresh Debug - Host:', req.get('host'));
+        console.log('[PROD-DEBUG] Refresh Debug - Origin:', req.get('origin'));
+    }
 
     if (!refreshToken) {
         console.log('❌ No refresh token found in cookies or body');
@@ -253,14 +272,23 @@ const refresh = catchAsync(async (req, res) => {
         domain: isProduction ? process.env.COOKIE_DOMAIN || '.50brains.in' : undefined  // Configurable domain
     };
 
-    console.log('🍪 Refresh Cookie Configuration:', {
+    const cookieDebugInfo = {
         isProduction,
         domain: cookieOptions.domain,
         secure: cookieOptions.secure,
         sameSite: cookieOptions.sameSite,
         actualDomain: req.get('host'),
-        origin: req.get('origin')
-    });
+        origin: req.get('origin'),
+        COOKIE_DOMAIN_ENV: process.env.COOKIE_DOMAIN
+    };
+    console.log('🍪 Refresh Cookie Configuration:', cookieDebugInfo);
+    // Explicit production debug (bypasses compression)
+    if (process.env.NODE_ENV === 'production') {
+        console.log('[PROD-DEBUG] Cookie Config - Domain:', cookieOptions.domain);
+        console.log('[PROD-DEBUG] Cookie Config - Secure:', cookieOptions.secure);
+        console.log('[PROD-DEBUG] Cookie Config - SameSite:', cookieOptions.sameSite);
+        console.log('[PROD-DEBUG] Cookie Config - ENV Domain:', process.env.COOKIE_DOMAIN);
+    }
 
     // Set new refresh token as httpOnly cookie
     res.cookie('refreshToken', tokens.refreshToken, {
