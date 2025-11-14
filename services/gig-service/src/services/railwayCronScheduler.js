@@ -1,6 +1,7 @@
 // services/gig-service/src/services/railwayCronScheduler.js
 const cron = require('node-cron');
-const { prisma } = require('../config/database');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 const logger = require('../utils/logger');
 
 class RailwayCronScheduler {

@@ -30,8 +30,8 @@ class PayoutController {
                         path: ['submissionApproved'],
                         equals: true
                     },
-                    // Look for payments with submissions approved in last 24 hours
-                    updatedAt: {
+                    // Look for payments moved to escrow in the last 24 hours
+                    heldEscrowAt: {
                         gte: yesterday
                     }
                 },
@@ -326,7 +326,7 @@ Thank you for your excellent work! 🎉`;
                         path: ['submissionApproved'],
                         equals: true
                     },
-                    updatedAt: {
+                    heldEscrowAt: {
                         gte: daysAgo
                     }
                 },
@@ -353,7 +353,7 @@ Thank you for your excellent work! 🎉`;
                     }
                 },
                 orderBy: {
-                    updatedAt: 'desc'
+                    heldEscrowAt: 'desc'
                 }
             });
 
