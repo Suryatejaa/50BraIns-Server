@@ -13,7 +13,7 @@ class WebhookController {
   async handleRazorpayWebhook(req, res) {
     try {
       console.log('🔔 Webhook received from Razorpay');
-      
+
       const webhookBody = req.body;
       const signature = req.headers['x-razorpay-signature'];
 
@@ -87,7 +87,7 @@ class WebhookController {
     } catch (error) {
       console.error('❌ Webhook error:', error);
       logger.error('Webhook processing failed', { error: error.message });
-      
+
       // Return 500 so Razorpay retries
       res.status(500).json({
         success: false,
@@ -98,6 +98,7 @@ class WebhookController {
 
   /**
    * Handle payment.authorized event
+   * Payment captured and held in escrow
    */
   async handlePaymentAuthorized(payload) {
     try {
@@ -110,7 +111,8 @@ class WebhookController {
 
       // Find payment record
       const dbPayment = await prisma.payment.findUnique({
-        where: { orderId }
+        where: { orderId },
+        include: { application: true, gig: true }
       });
 
       if (!dbPayment) {
@@ -118,21 +120,30 @@ class WebhookController {
         return;
       }
 
-      // Update payment record
+      // Update payment to HELD_ESCROW (authorized and secured)
       const updated = await prisma.payment.update({
         where: { orderId },
         data: {
           paymentId,
-          status: 'AUTHORIZED',
-          authorizedAt: new Date()
+          status: 'HELD_ESCROW',
+          authorizedAt: new Date(),
+          heldEscrowAt: new Date()
         }
       });
 
-      console.log(`✅ Payment ${dbPayment.id} marked as AUTHORIZED`);
-      
-      // TODO: Send notification to brand
-      // await sendNotification(dbPayment.paidBy, 'Payment authorized');
-      
+      // Update application status
+      await prisma.application.update({
+        where: { id: dbPayment.applicationId },
+        data: {
+          paymentStatus: 'PAID',
+          status: 'WORK_IN_PROGRESS'
+        }
+      });
+
+      console.log(`✅ Payment ${dbPayment.id} held in escrow`);
+
+      // TODO: Send notification to creator that payment is secured and they can start work
+
     } catch (error) {
       console.error('Error handling payment.authorized:', error);
       logger.error('Payment authorized webhook failed', { error: error.message });
@@ -161,10 +172,10 @@ class WebhookController {
       });
 
       console.log(`✅ Payment ${updated.id} marked as FAILED`);
-      
+
       // TODO: Send notification to brand
       // await sendNotification(updated.paidBy, `Payment failed: ${errorDescription}`);
-      
+
     } catch (error) {
       console.error('Error handling payment.failed:', error);
       logger.error('Payment failed webhook failed', { error: error.message });
@@ -173,7 +184,7 @@ class WebhookController {
 
   /**
    * Handle payment.captured event
-   * This is when payment is successfully captured
+   * This confirms payment is fully processed in escrow
    */
   async handlePaymentCaptured(payload) {
     try {
@@ -187,8 +198,8 @@ class WebhookController {
       // Get payment record
       const dbPayment = await prisma.payment.findUnique({
         where: { orderId },
-        include: { 
-          application: { include: { applicant: true } },
+        include: {
+          application: true,
           gig: true
         }
       });
@@ -198,41 +209,21 @@ class WebhookController {
         return;
       }
 
-      // Update payment status
-      const updated = await prisma.payment.update({
-        where: { orderId },
-        data: {
-          status: 'CAPTURED',
-          capturedAt: new Date()
-        }
-      });
+      // Ensure payment is in escrow (not auto-releasing yet)
+      if (dbPayment.status !== 'HELD_ESCROW') {
+        const updated = await prisma.payment.update({
+          where: { orderId },
+          data: {
+            status: 'HELD_ESCROW',
+            heldEscrowAt: new Date()
+          }
+        });
+        console.log(`✅ Payment ${updated.id} confirmed in escrow`);
+      }
 
-      // Update application status (work has been accepted)
-      await prisma.application.update({
-        where: { id: dbPayment.applicationId },
-        data: { 
-          status: 'COMPLETED',
-          completedAt: new Date()
-        }
-      });
-
-      console.log(`✅ Payment and application marked as COMPLETED`);
-      
-      // TODO: Implement these
-      // 1. Send notification to creator about payment
-      // await sendNotification(
-      //   dbPayment.paidTo,
-      //   `Payment of ₹${amount/100} received from ${dbPayment.gig.title}`
-      // );
-      
-      // 2. Trigger payout to creator (if using Razorpay Payouts)
-      // await triggerPayoutToCreator(dbPayment.paidTo, amount);
-      
-      // 3. Send notification to brand
-      // await sendNotification(
-      //   dbPayment.paidBy,
-      //   `Payment captured for ${dbPayment.gig.title}`
-      // );
+      // TODO: 
+      // 1. Send notification to creator that work can begin
+      // 2. Send confirmation to brand that payment is secured
 
     } catch (error) {
       console.error('Error handling payment.captured:', error);
@@ -250,7 +241,7 @@ class WebhookController {
       const refundAmount = refund.entity.amount;
       const refundReason = refund.entity.notes?.reason || 'No reason provided';
 
-      console.log(`🔄 Refund created for payment: ${paymentId}, amount: ₹${refundAmount/100}`);
+      console.log(`🔄 Refund created for payment: ${paymentId}, amount: ₹${refundAmount / 100}`);
 
       const dbPayment = await prisma.payment.findUnique({
         where: { paymentId }
@@ -265,7 +256,7 @@ class WebhookController {
         });
 
         console.log(`✅ Payment ${dbPayment.id} marked as REFUNDED`);
-        
+
         // TODO: Send notification
         // await sendNotification(dbPayment.paidBy, 'Payment refunded');
       }
@@ -301,7 +292,7 @@ class WebhookController {
         });
 
         console.log(`⚠️ Payment ${dbPayment.id} marked as DISPUTED`);
-        
+
         // TODO: Alert admin
         // await alertAdmin(`Dispute on payment: ${paymentId}`);
       }

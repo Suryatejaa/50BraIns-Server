@@ -67,7 +67,6 @@ model Gig {
   deliveries    GigDelivery[]
   assignment    GigAssignment?
   chats         GigChat[]
-  payments      Payment[]     // Payments made for this gig
   agreedToTerms Boolean
   @@map("gigs")
 }
@@ -79,16 +78,11 @@ model Application {
   applicantType String    // "user" or "clan" or "owner"
   clanId        String?   // Required when applicantType is "clan"
   proposal      String?   // Cover letter / proposal
-  quotedPrice   Float?    // Creator's quoted price (before platform fee)
-  creatorFee    Float?    // Fee deducted from creator (5% of quoted price)
-  brandFee      Float?    // Fee paid by brand (5% of quoted price)
-  platformFee   Float?    // Total platform fee (creatorFee + brandFee)
-  gstOnFee      Float?    // GST on platform fee (default 0%)
-  totalAmount   Float?    // Total amount brand pays (quotedPrice + brandFee + gstOnFee)
+  quotedPrice   Float?    // If they want to negotiate price
   estimatedTime String?   // How long they think it will take
   portfolio     String[]  @default([]) // URLs to portfolio items
   status        ApplicationStatus @default(PENDING)
-  upiId         String    // UPI Id to receive payment
+  upiId         String    // UPI Id to recevie payment
   
   // Address field for PRODUCT type gigs
   address       String?   // Required when gig type is "PRODUCT"
@@ -110,7 +104,6 @@ model Application {
   deliveries    GigDelivery[]
   assignment    GigAssignment?
   chat          GigChat?
-  payment       Payment?  // One payment per application when assigned
   agreedToTerms Boolean
   @@unique([applicantId, gigId])
   @@map("applications")
@@ -415,16 +408,13 @@ enum GigStatus {
 }
 
 enum ApplicationStatus {
-  PENDING          // Application submitted, awaiting review
-  APPROVED         // Application approved by brand
-  PAYMENT_PENDING  // Brand needs to complete payment
-  PAYMENT_FAILED   // Payment failed, needs retry
-  WORK_IN_PROGRESS // Payment completed, work can begin
-  DELIVERED        // Delivery files submitted and approved by brand
-  SUBMITTED        // Work has been submitted by applicant (final URL)
-  CLOSED        // Work approved by brand, payment released
-  REJECTED         // Application rejected
-  WITHDRAWN        // Applicant withdrew their application
+  PENDING   // Application submitted, awaiting review
+  APPROVED  // Application approved, gig assigned
+  DELIVERED // Delivery files submitted and approved by brand
+  SUBMITTED // Work has been submitted by applicant (final URL)
+  CLOSED    // Work approved by brand, application complete
+  REJECTED  // Application rejected
+  WITHDRAWN // Applicant withdrew their application
 }
 
 enum SubmissionStatus {
@@ -497,57 +487,6 @@ enum CampaignStatus {
   CANCELLED    // Campaign cancelled
 }
 
-// Payment model for escrow functionality
-model Payment {
-  id              String   @id @default(cuid())
-  applicationId   String   @unique // One payment per application
-  gigId           String
-  
-  // Razorpay details
-  orderId         String   @unique // rzp_order_xxx
-  paymentId       String?  @unique // rzp_payment_xxx (after successful payment)
-  signature       String?  // Razorpay signature
-  
-  // Amount breakdown
-  quotedPrice     Float    // Creator's quoted amount
-  creatorFee      Float    // Fee deducted from creator
-  brandFee        Float    // Fee paid by brand
-  platformFee     Float    // Total platform fee (creatorFee + brandFee)
-  gstOnFee        Float    // GST on platform fee
-  totalAmount     Float    // Total amount paid by brand
-  creatorAmount   Float    // Amount that will be released to creator (quotedPrice - creatorFee)
-  
-  // Payment details
-  currency        String   @default("INR")
-  status          PaymentStatus @default(CREATED)
-  
-  // Parties
-  paidBy          String   // Brand userId
-  paidTo          String   // Creator userId
-  
-  // Timestamps
-  createdAt       DateTime @default(now())
-  authorizedAt    DateTime? // When payment was authorized
-  heldEscrowAt    DateTime? // When payment was moved to escrow
-  releasedAt      DateTime? // When payment was released to creator
-  refundedAt      DateTime? // When payment was refunded to brand
-  
-  // Metadata
-  receipt         String   @unique
-  description     String?
-  notes           Json?
-  
-  // Relations
-  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  gig             Gig      @relation(fields: [gigId], references: [id], onDelete: Cascade)
-  
-  @@index([gigId])
-  @@index([status])
-  @@index([paidBy])
-  @@index([paidTo])
-  @@map("payments")
-}
-
 // Models for the new delivery workflow
 model GigDelivery {
   id               String   @id @default(cuid())
@@ -598,7 +537,6 @@ model GigDeliveryCleanup {
 }
 
 
-
 enum GigDeliveryStatus {
   PENDING      // Submitted, awaiting brand review
   APPROVED     // Approved by brand, can proceed to public submission
@@ -611,26 +549,4 @@ enum GigDeliveryCleanupStatus {
   PROCESSING   // Currently being processed
   COMPLETED    // Successfully cleaned up
   FAILED       // Cleanup failed, may need retry
-}
-
-enum PaymentStatus {
-  CREATED       // Order created, awaiting payment
-  AUTHORIZED    // Payment authorized by Razorpay
-  HELD_ESCROW   // Payment captured and held in escrow
-  RELEASED      // Payment released to creator
-  REFUNDED      // Payment refunded to brand
-  FAILED        // Payment failed
-  DISPUTED      // Payment disputed
-}
-
-model CronLeader {
-  id             String   @id
-  instanceId     String
-  lastHeartbeat  DateTime
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
-  @@index([lastHeartbeat])
-  @@index([instanceId])
-  @@map("cron_leader")
 }

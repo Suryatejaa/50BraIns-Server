@@ -113,6 +113,13 @@ class RabbitMQService {
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted');
         // await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'work_submitted_notification');
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed');
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_reviewed_notification');
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'payment_released_notification');
+
+        // NEW: Bind to submission reminder and auto-approval events
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'submission_review_reminder');
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'auto_approval_notification');
+        await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'auto_approval_brand_notification');
 
         // NEW: Bind to delivery workflow events
         await this.channel.bindQueue('notifications.gig.events', 'gig_events', 'delivery_submitted');
@@ -325,6 +332,21 @@ class RabbitMQService {
                 break;
             case 'submission_reviewed':
                 await consumer.handleSubmissionReviewed(eventData);
+                break;
+            case 'submission_reviewed_notification':
+                await consumer.handleSubmissionReviewedNotification(eventData);
+                break;
+            case 'payment_released_notification':
+                await consumer.handlePaymentReleasedNotification(eventData);
+                break;
+            case 'submission_review_reminder':
+                await consumer.handleSubmissionReviewReminder(eventData);
+                break;
+            case 'auto_approval_notification':
+                await consumer.handleAutoApprovalNotification(eventData);
+                break;
+            case 'auto_approval_brand_notification':
+                await consumer.handleAutoApprovalBrandNotification(eventData);
                 break;
 
             // Application Conversation Events (Incident Management Style)

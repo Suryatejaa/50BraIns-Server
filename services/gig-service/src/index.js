@@ -11,6 +11,10 @@ const rabbitmqService = require('./services/rabbitmqService');
 const gigCacheService = require('./services/gigCacheService');
 const CreditEventConsumer = require('./services/creditEventConsumer');
 const GigEventConsumer = require('./services/gigEventConsumer');
+// Use Railway-optimized cron scheduler in production, regular one in development
+const cronScheduler = process.env.RAILWAY_ENVIRONMENT
+    ? require('./services/railwayCronScheduler')
+    : require('./services/cronScheduler');
 
 // Import routes
 const healthRoutes = require('./routes/health');
@@ -21,7 +25,7 @@ const applicationRoutes = require('./routes/applications');
 const submissionRoutes = require('./routes/submissions');
 const crewRoutes = require('./routes/crew');
 const chatRoutes = require('./routes/chat');
-// const adminRoutes = require('./routes/admin');
+const adminRoutes = require('./routes/admin');
 
 // Import middleware
 const {
@@ -134,6 +138,7 @@ app.use('/applications', applicationRoutes);
 app.use('/submissions', submissionRoutes);
 app.use('/crew', crewRoutes);
 app.use('/chat', chatRoutes);
+app.use('/admin', adminRoutes);
 
 // Cache metrics endpoint
 app.get('/cache/metrics', (req, res) => {
@@ -196,6 +201,10 @@ const gracefulShutdown = async (signal) => {
         // Close RabbitMQ connection
         await rabbitmqService.close();
         console.log('RabbitMQ connection closed');
+
+        // Stop cron scheduler
+        cronScheduler.stop();
+        console.log('Cron scheduler stopped');
 
         // Close cache connection
         await gigCacheService.shutdown();
@@ -267,8 +276,17 @@ async function startServer() {
                             console.error('❌ [Gig Service] Cleanup error:', error);
                         }
                     }, 60 * 60 * 1000); // Run cleanup every hour
+
+                    // Start cron scheduler for automated tasks
+                    cronScheduler.start();
+                    console.log('⏰ [Gig Service] Cron scheduler started for automated payout processing');
+
                 } else {
                     console.warn('⚠️  [Gig Service] RabbitMQ connection failed, continuing without message broker');
+
+                    // Start cron scheduler even without RabbitMQ (payouts don't require it)
+                    cronScheduler.start();
+                    console.log('⏰ [Gig Service] Cron scheduler started (standalone mode)');
                 }
 
             } catch (error) {

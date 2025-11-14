@@ -2040,7 +2040,27 @@ class GigController {
                         gigId: gigId
                     },
                     orderBy: { appliedAt: 'desc' },
-                    include: {
+                    select: {
+                        id: true,
+                        gigId: true,
+                        applicantId: true,
+                        applicantType: true,
+                        clanId: true,
+                        proposal: true,
+                        quotedPrice: true,
+                        creatorFee: true,
+                        brandFee: true,
+                        platformFee: true,
+                        gstOnFee: true,
+                        totalAmount: true,
+                        estimatedTime: true,
+                        portfolio: true,
+                        status: true,
+                        appliedAt: true,
+                        respondedAt: true,
+                        rejectionReason: true,
+                        address: true,
+                        upiId: true,
                         _count: {
                             select: { submissions: true }
                         },
@@ -2060,7 +2080,34 @@ class GigController {
                     }
                 });
 
-                const applicationsStatus = applications.map((application) => ({ gigId: application.gigId, status: application.status }));
+                // Process applications to include amount calculations
+                const processedApplications = applications.map(app => {
+                    // Calculate creator amount if not stored
+                    const creatorAmount = app.quotedPrice && app.creatorFee
+                        ? app.quotedPrice - app.creatorFee
+                        : app.quotedPrice;
+
+                    return {
+                        ...app,
+                        creatorAmount,
+                        amountDetails: {
+                            quotedPrice: app.quotedPrice,
+                            creatorFee: app.creatorFee,
+                            brandFee: app.brandFee,
+                            platformFee: app.platformFee,
+                            gstOnFee: app.gstOnFee,
+                            totalAmount: app.totalAmount,
+                            creatorAmount: creatorAmount,
+                            breakdown: {
+                                creatorReceives: creatorAmount,
+                                brandPays: app.totalAmount,
+                                platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                            }
+                        }
+                    };
+                });
+
+                const applicationsStatus = processedApplications.map((application) => ({ gigId: application.gigId, status: application.status }));
 
                 return {
                     applicationsStatus: applicationsStatus,
@@ -2070,8 +2117,8 @@ class GigController {
                         category: gig.category,
                         status: gig.status
                     },
-                    applications: applications,
-                    totalApplications: applications.length
+                    applications: processedApplications,
+                    totalApplications: processedApplications.length
                 };
             }, 300); // 5 minute TTL
 
@@ -2136,7 +2183,27 @@ class GigController {
                         { clanId: userId } // In case user applied as a clan
                     ]
                 },
-                include: {
+                select: {
+                    id: true,
+                    gigId: true,
+                    applicantId: true,
+                    applicantType: true,
+                    clanId: true,
+                    proposal: true,
+                    quotedPrice: true,
+                    creatorFee: true,
+                    brandFee: true,
+                    platformFee: true,
+                    gstOnFee: true,
+                    totalAmount: true,
+                    estimatedTime: true,
+                    portfolio: true,
+                    status: true,
+                    appliedAt: true,
+                    respondedAt: true,
+                    rejectionReason: true,
+                    address: true,
+                    upiId: true,
                     gig: {
                         select: {
                             id: true,
@@ -2167,9 +2234,34 @@ class GigController {
                 });
             }
 
+            // Calculate creator amount if not stored
+            const creatorAmount = application.quotedPrice && application.creatorFee
+                ? application.quotedPrice - application.creatorFee
+                : application.quotedPrice;
+
             const applicationStatus = {
                 gigId: application.gigId,
                 status: application.status
+            };
+
+            // Enhanced application object with payment details
+            const enhancedApplication = {
+                ...application,
+                creatorAmount,
+                amountDetails: {
+                    quotedPrice: application.quotedPrice,
+                    creatorFee: application.creatorFee,
+                    brandFee: application.brandFee,
+                    platformFee: application.platformFee,
+                    gstOnFee: application.gstOnFee,
+                    totalAmount: application.totalAmount,
+                    creatorAmount: creatorAmount,
+                    breakdown: {
+                        creatorReceives: creatorAmount,
+                        brandPays: application.totalAmount,
+                        platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                    }
+                }
             };
 
             // Set cache control headers to prevent browser caching
@@ -2182,7 +2274,7 @@ class GigController {
             res.json({
                 success: true,
                 data: {
-                    application: application,
+                    application: enhancedApplication,
                     gig: application.gig,
                     applicationStatus: applicationStatus
                 }

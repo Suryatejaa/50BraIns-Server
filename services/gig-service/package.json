@@ -11,7 +11,9 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "cron:daily-payouts": "node scripts/daily-payout-cron.js",
+    "cron:check-pending": "node -e \"require('./scripts/daily-payout-cron').checkPendingPayouts().then(console.log)\""
   },
   "engines": {
     "node": ">=20.0.0",
@@ -40,6 +42,7 @@
     "helmet": "^7.1.0",
     "http-status-codes": "^2.3.0",
     "joi": "^17.11.0",
+    "node-cron": "^4.2.1",
     "razorpay": "^2.9.6",
     "redis": "^4.7.1",
     "uuid": "^9.0.1",

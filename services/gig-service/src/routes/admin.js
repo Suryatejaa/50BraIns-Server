@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
+const PayoutController = require('../controllers/payout.controller');
+// Use Railway-optimized cron scheduler in production, regular one in development
+const cronScheduler = process.env.RAILWAY_ENVIRONMENT
+    ? require('../services/railwayCronScheduler')
+    : require('../services/cronScheduler');
 const { requireAuth, requireAdmin } = require('../middleware');
 
 // ============================================================================
@@ -114,6 +119,24 @@ router.post('/financial/payments/:paymentId/process', requireAuth, requireAdmin,
  * Body: { gigId: string, amount: number, reason: string, refundToInfluencer: boolean }
  */
 router.post('/financial/refunds', requireAuth, requireAdmin, adminController.processRefund);
+
+// ============================================================================
+// PAYOUT MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * GET /admin/payouts/pending
+ * Get pending payouts that need to be processed
+ * Query params: days (default: 1)
+ */
+router.get('/payouts/pending', requireAuth, requireAdmin, require('../controllers/payout.controller').getPendingPayouts);
+
+/**
+ * POST /admin/payouts/process-daily
+ * Daily cron job to process payouts for approved submissions
+ * This endpoint should be called by a cron job every 24 hours
+ */
+router.post('/payouts/process-daily', requireAuth, requireAdmin, require('../controllers/payout.controller').processDailyPayouts);
 
 // ============================================================================
 // DISPUTE MANAGEMENT ROUTES
@@ -305,5 +328,142 @@ router.get('/config/commission-rates', requireAuth, requireAdmin, adminControlle
  * Body: { rates: object }
  */
 router.put('/config/commission-rates', requireAuth, requireAdmin, adminController.updateCommissionRates);
+
+// ============================================================================
+// PAYOUT MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * GET /admin/payouts/pending
+ * Get pending payouts for review
+ * Query params: days (optional, default 1)
+ */
+router.get('/payouts/pending', requireAuth, requireAdmin, PayoutController.getPendingPayouts);
+
+/**
+ * POST /admin/payouts/process-daily
+ * Process daily batch payouts
+ */
+router.post('/payouts/process-daily', requireAuth, requireAdmin, PayoutController.processDailyPayouts);
+
+/**
+ * GET /admin/cron/status
+ * Get cron scheduler status and job information
+ */
+router.get('/cron/status', requireAuth, requireAdmin, (req, res) => {
+    try {
+        const status = cronScheduler.getStatus();
+        res.json({
+            success: true,
+            data: status
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get cron status',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * POST /admin/cron/trigger-payouts
+ * Manually trigger daily payout processing
+ */
+router.post('/cron/trigger-payouts', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        await cronScheduler.triggerDailyPayouts();
+        res.json({
+            success: true,
+            message: 'Daily payout processing triggered successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to trigger payout processing',
+            details: error.message
+        });
+    }
+});
+
+// ============================================================================
+// SUBMISSION MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * POST /admin/submissions/send-reminders
+ * Manually trigger submission reminder notifications
+ */
+router.post('/submissions/send-reminders', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const SubmissionController = require('../controllers/submission.controller');
+        await SubmissionController.sendSubmissionReminders(req, res);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to send submission reminders',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * POST /admin/submissions/auto-approve
+ * Manually trigger auto-approval of overdue submissions
+ */
+router.post('/submissions/auto-approve', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const SubmissionController = require('../controllers/submission.controller');
+        await SubmissionController.processAutoApprovals(req, res);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to process auto-approvals',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * POST /admin/cron/trigger-submission-reminders
+ * Manually trigger submission reminder cron job
+ */
+router.post('/cron/trigger-submission-reminders', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const SubmissionController = require('../controllers/submission.controller');
+        await SubmissionController.triggerSubmissionReminders();
+        res.json({
+            success: true,
+            message: 'Submission reminder job triggered successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to trigger submission reminders',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * POST /admin/cron/trigger-auto-approvals
+ * Manually trigger auto-approval cron job
+ */
+router.post('/cron/trigger-auto-approvals', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const SubmissionController = require('../controllers/submission.controller');
+        await SubmissionController.triggerAutoApprovals();
+        res.json({
+            success: true,
+            message: 'Auto-approval job triggered successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to trigger auto-approvals',
+            details: error.message
+        });
+    }
+});
 
 module.exports = router;

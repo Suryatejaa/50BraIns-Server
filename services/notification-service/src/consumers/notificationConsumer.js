@@ -1090,17 +1090,16 @@ class NotificationConsumer {
 
             const { gigId, submissionId, recipientId, applicantId, status } = eventData;
 
-            await this.createAndSendNotification({
-                userId: recipientId,
-                type: 'ENGAGEMENT',
-                category: 'GIG',
-                title: '📋 Submission Reviewed',
-                message: `Your submission for gig "${gigId}" has been reviewed. Status: ${status}`,
-                metadata: { gigId, submissionId, applicantId, status, eventType: 'submission.reviewed' }
+            // This is a basic event handler for general submission reviews
+            // The more detailed notifications are handled by submission_reviewed_notification
+            console.log('📋 Basic submission reviewed event processed:', {
+                gigId,
+                submissionId,
+                applicantId,
+                status
             });
 
-            // This is handled in reputation/work history services - just log for now
-            console.log('✅ [Notification Service] Submission reviewed event logged for other services');
+            // This event is mainly for other services (reputation, work history) - logging only
             logger.notification('Submission reviewed event processed', { gigId, submissionId, applicantId, status });
         } catch (error) {
             console.error('❌ [Notification Service] Error handling submission reviewed event:', error);
@@ -1808,6 +1807,256 @@ class NotificationConsumer {
         } catch (error) {
             console.error('❌ [Notification Service] Error handling gig invitation rejected notification:', error);
             logger.error('Error handling gig invitation rejected notification:', error);
+        }
+    }
+
+    async handleSubmissionReviewedNotification(eventData) {
+        try {
+            console.log('📋 [Notification Service] Handling submission_reviewed_notification event:', eventData);
+
+            const {
+                recipientId,
+                gigId,
+                gigTitle,
+                submissionId,
+                reviewStatus,
+                rating,
+                feedback,
+                message
+            } = eventData;
+
+            // Create notification for the creator about their submission review
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'SUBMISSION',
+                title: reviewStatus === 'APPROVED' ? '🎉 Submission Approved!' :
+                    reviewStatus === 'REJECTED' ? '❌ Submission Rejected' : '📝 Revision Requested',
+                message: message || `Your submission for "${gigTitle}" has been reviewed. ${reviewStatus === 'APPROVED' ? 'Payment processing will begin shortly.' : 'Please check the feedback and resubmit if needed.'}`,
+                metadata: {
+                    gigId,
+                    submissionId,
+                    reviewStatus,
+                    rating,
+                    feedback,
+                    eventType: 'submission.reviewed'
+                }
+            });
+
+            logger.notification('Submission reviewed notification sent to creator', {
+                gigId,
+                submissionId,
+                recipientId,
+                reviewStatus
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling submission reviewed notification:', error);
+            logger.error('Error handling submission reviewed notification:', error);
+        }
+    }
+
+    async handlePaymentReleasedNotification(eventData) {
+        try {
+            console.log('💰 [Notification Service] Handling payment_released_notification event:', eventData);
+
+            const {
+                recipientId,
+                gigId,
+                gigTitle,
+                submissionId,
+                creatorId,
+                message
+            } = eventData;
+
+            // Create notification for the brand about payment release
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'PAYMENT',
+                title: '💸 Payment Released',
+                message: message || `Payment has been successfully processed to the creator for "${gigTitle}". The funds have been transferred from escrow to their UPI account. The gig is now complete.`,
+                metadata: {
+                    gigId,
+                    submissionId,
+                    creatorId,
+                    eventType: 'payment.released',
+                    status: 'completed'
+                }
+            });
+
+            // Also send a confirmation notification to the creator about payment release
+            if (creatorId) {
+                await this.createAndSendNotification({
+                    userId: creatorId,
+                    type: 'GIG',
+                    category: 'PAYMENT',
+                    title: '💰 Payment Received!',
+                    message: `🎉 Your payment for "${gigTitle}" has been successfully transferred to your UPI account! The funds were processed from our secure escrow system. Thank you for the excellent work!`,
+                    metadata: {
+                        gigId,
+                        submissionId,
+                        brandId: recipientId,
+                        eventType: 'payment.received',
+                        status: 'received'
+                    }
+                });
+            }
+
+            logger.notification('Payment released notification sent', {
+                gigId,
+                submissionId,
+                brandId: recipientId,
+                creatorId
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling payment released notification:', error);
+            logger.error('Error handling payment released notification:', error);
+        }
+    }
+
+    async handleSubmissionReviewReminder(eventData) {
+        try {
+            console.log('📬 [Notification Service] Handling submission_review_reminder event:', eventData);
+
+            const {
+                recipientId,
+                gigId,
+                gigTitle,
+                submissionId,
+                submittedById,
+                quotedPrice,
+                hoursPending,
+                message,
+                urgency = 'MEDIUM'
+            } = eventData;
+
+            // Create reminder notification for the brand
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'SUBMISSION',
+                title: urgency === 'HIGH' ? '🚨 Urgent: Submission Review Required' : '⏰ Submission Review Reminder',
+                message: message || `A work submission for "${gigTitle}" has been pending review for ${hoursPending} hours. Please review to avoid auto-approval.`,
+                metadata: {
+                    gigId,
+                    submissionId,
+                    submittedById,
+                    quotedPrice,
+                    hoursPending,
+                    urgency,
+                    eventType: 'submission.review.reminder',
+                    autoApprovalWarning: hoursPending >= 36
+                },
+                priority: urgency === 'HIGH' ? 3 : 2
+            });
+
+            logger.notification('Submission review reminder sent', {
+                gigId,
+                submissionId,
+                recipientId,
+                hoursPending,
+                urgency
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling submission review reminder:', error);
+            logger.error('Error handling submission review reminder:', error);
+        }
+    }
+
+    async handleAutoApprovalNotification(eventData) {
+        try {
+            console.log('🎉 [Notification Service] Handling auto_approval_notification event:', eventData);
+
+            const {
+                recipientId,
+                gigId,
+                gigTitle,
+                submissionId,
+                applicationId,
+                quotedPrice,
+                creatorEarnings,
+                hoursPending,
+                message
+            } = eventData;
+
+            // Create notification for the creator about auto-approval
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'SUBMISSION',
+                title: '🎉 Submission Auto-Approved!',
+                message: message || `Your submission for "${gigTitle}" has been automatically approved after ${hoursPending} hours. Payment processing will begin soon.`,
+                metadata: {
+                    gigId,
+                    submissionId,
+                    applicationId,
+                    quotedPrice,
+                    creatorEarnings,
+                    hoursPending,
+                    eventType: 'submission.auto.approved',
+                    autoApproved: true
+                },
+                priority: 2
+            });
+
+            logger.notification('Auto approval notification sent to creator', {
+                gigId,
+                submissionId,
+                recipientId,
+                creatorEarnings
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling auto approval notification:', error);
+            logger.error('Error handling auto approval notification:', error);
+        }
+    }
+
+    async handleAutoApprovalBrandNotification(eventData) {
+        try {
+            console.log('⏰ [Notification Service] Handling auto_approval_brand_notification event:', eventData);
+
+            const {
+                recipientId,
+                gigId,
+                gigTitle,
+                submissionId,
+                applicationId,
+                creatorId,
+                quotedPrice,
+                hoursPending,
+                message
+            } = eventData;
+
+            // Create notification for the brand about auto-approval
+            await this.createAndSendNotification({
+                userId: recipientId,
+                type: 'GIG',
+                category: 'SUBMISSION',
+                title: '⏰ Submission Auto-Approved',
+                message: message || `The submission for "${gigTitle}" has been automatically approved after ${hoursPending} hours of no review.`,
+                metadata: {
+                    gigId,
+                    submissionId,
+                    applicationId,
+                    creatorId,
+                    quotedPrice,
+                    hoursPending,
+                    eventType: 'submission.auto.approved.brand',
+                    autoApproved: true,
+                    reason: 'No review after 48 hours'
+                },
+                priority: 1
+            });
+
+            logger.notification('Auto approval brand notification sent', {
+                gigId,
+                submissionId,
+                recipientId,
+                creatorId
+            });
+        } catch (error) {
+            console.error('❌ [Notification Service] Error handling auto approval brand notification:', error);
+            logger.error('Error handling auto approval brand notification:', error);
         }
     }
 

@@ -3,8 +3,10 @@ const databaseService = require('../services/database');
 const rabbitmqService = require('../services/rabbitmqService');
 const gigCacheService = require('../services/gigCacheService');
 const DatabaseOptimizer = require('../utils/databaseOptimizer');
+const paymentController = require('./payment.controller');
 const Joi = require('joi');
 const { title } = require('process');
+const { application } = require('express');
 
 // Helper function to format file sizes
 function formatFileSize(bytes) {
@@ -21,7 +23,51 @@ class ApplicationController {
         this.cache = gigCacheService;
     }
 
-    // Helper function for performance monitoring
+    // Helper function to calculate platform fees with split fee structure
+    calculatePlatformFees = (quotedPrice) => {
+        const platformFeePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || '10'); // Default 10%
+        const gstOnFeePercent = parseFloat(process.env.GST_ON_FEE_PERCENT || '0'); // Default 0%
+        const minimumThreshold = parseFloat(process.env.MINIMUM_FEE_THRESHOLD || '5'); // No fees below ₹5
+
+        // No platform fee for amounts below minimum threshold
+        if (quotedPrice < minimumThreshold) {
+            return {
+                quotedPrice,      // Original amount quoted by creator
+                creatorFee: 0,    // No fee for small amounts
+                brandFee: 0,      // No fee for small amounts
+                platformFee: 0,   // No platform fee
+                gstOnFee: 0,      // No GST
+                creatorAmount: quotedPrice, // Creator gets full amount
+                totalAmount: quotedPrice    // Brand pays only quoted amount
+            };
+        }
+
+        // Split platform fee equally between creator and brand
+        const creatorFeePercent = platformFeePercent / 2;  // 5% (half of 10%)
+        const brandFeePercent = platformFeePercent / 2;    // 5% (half of 10%)
+
+        // Calculate fees with minimum ₹1 each for amounts above threshold
+        const calculatedCreatorFee = (quotedPrice * creatorFeePercent) / 100;
+        const calculatedBrandFee = (quotedPrice * brandFeePercent) / 100;
+
+        const creatorFee = Math.max(1, Math.round(calculatedCreatorFee));
+        const brandFee = Math.max(1, Math.round(calculatedBrandFee));
+        const platformFee = creatorFee + brandFee; // Total platform fee
+        const gstOnFee = Math.round((platformFee * gstOnFeePercent) / 100);
+
+        const creatorAmount = quotedPrice - creatorFee; // Creator receives quoted price minus their fee
+        const totalAmount = quotedPrice + brandFee + gstOnFee; // Brand pays quoted price + their fee + GST
+
+        return {
+            quotedPrice,      // Original amount quoted by creator
+            creatorFee,       // Fee deducted from creator (5% of quoted price, min ₹1)
+            brandFee,         // Fee paid by brand (5% of quoted price, min ₹1)  
+            platformFee,      // Total platform fee (creatorFee + brandFee)
+            gstOnFee,         // GST on total platform fee
+            creatorAmount,    // Amount creator receives (quotedPrice - creatorFee)
+            totalAmount       // Total amount brand pays (quotedPrice + brandFee + gstOnFee)
+        };
+    };    // Helper function for performance monitoring
     measureQueryPerformance = async (queryName, queryFn) => {
         const startTime = Date.now();
         try {
@@ -84,7 +130,11 @@ class ApplicationController {
 
     static applyGigSchema = Joi.object({
         proposal: Joi.string().min(10).max(1000).optional(),
-        quotedPrice: Joi.number().min(0).optional(),
+        quotedPrice: Joi.number().min(0).required().messages({
+            'any.required': 'Quoted price is required for gig application',
+            'number.base': 'Quoted price must be a valid number',
+            'number.min': 'Quoted price cannot be negative'
+        }),
         estimatedTime: Joi.string().optional(),
         portfolio: Joi.array().items(Joi.string().pattern(/^https?:\/\/.+/)).default([]),
         applicantType: Joi.string().valid('user', 'clan').required(),
@@ -794,6 +844,10 @@ class ApplicationController {
                 payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null
             });
 
+            // Calculate platform fees
+            const feeCalculation = this.calculatePlatformFees(value.quotedPrice);
+            console.log("💰 [Gig Service] Fee calculation:", feeCalculation);
+
             const application = await this.prisma.application.create({
                 data: {
                     gigId: id,
@@ -801,7 +855,12 @@ class ApplicationController {
                     applicantType: value.applicantType,
                     clanId: value.applicantType === 'clan' ? applicantId : null,
                     proposal: value.proposal,
-                    quotedPrice: value.quotedPrice,
+                    quotedPrice: feeCalculation.quotedPrice,
+                    creatorFee: feeCalculation.creatorFee,
+                    brandFee: feeCalculation.brandFee,
+                    platformFee: feeCalculation.platformFee,
+                    gstOnFee: feeCalculation.gstOnFee,
+                    totalAmount: feeCalculation.totalAmount,
                     estimatedTime: value.estimatedTime,
                     portfolio: value.portfolio,
                     address: value.address,
@@ -810,7 +869,6 @@ class ApplicationController {
                     milestonePlan: value.applicantType === 'clan' ? value.milestonePlan : null,
                     payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null,
                     agreedToTerms: true
-                    // Note: agreedToTerms is removed since it's not a database field
                 }
             });
 
@@ -935,7 +993,7 @@ class ApplicationController {
                 ];
 
                 for (const cacheKey of userCachePatterns) {
-                    await this.cache.cacheManager.del(cacheKey);
+                    await this.cache.cacheManager.invalidateList(cacheKey);
                 }
                 console.log(`🗑️ Force deleted user applications cache patterns for user: ${application.applicantId}`);
             } catch (error) {
@@ -945,7 +1003,19 @@ class ApplicationController {
             res.status(201).json({
                 success: true,
                 message: 'Application submitted successfully',
-                data: application
+                data: {
+                    application: application,
+                    feeBreakdown: {
+                        quotedPrice: application.quotedPrice,
+                        creatorFee: feeCalculation.creatorFee,
+                        brandFee: feeCalculation.brandFee,
+                        platformFee: application.platformFee,
+                        gstOnFee: application.gstOnFee,
+                        creatorWillReceive: feeCalculation.creatorAmount,
+                        brandWillPay: application.totalAmount,
+                        note: 'Platform fee is split equally: Creator pays 5%, Brand pays 5%'
+                    }
+                }
             });
         } catch (error) {
             console.log("error", error);
@@ -1088,6 +1158,10 @@ class ApplicationController {
                 }
             }
 
+            // Calculate platform fees
+            const feeCalculation = this.calculatePlatformFees(value.quotedPrice);
+            console.log("💰 [Gig Service] Fee calculation for assignment:", feeCalculation);
+
             // Create or update application (only if no existing application or existing is inactive)
             const application = existingApplication && inactiveStatuses.includes(existingApplication.status)
                 ? await this.prisma.application.update({
@@ -1098,7 +1172,12 @@ class ApplicationController {
                         applicantType: 'owner', // This is the key difference - owner is inviting
                         clanId: value.applicantType === 'clan' ? applicantId : null,
                         proposal: value.proposal,
-                        quotedPrice: value.quotedPrice,
+                        quotedPrice: feeCalculation.quotedPrice,
+                        creatorFee: feeCalculation.creatorFee,
+                        brandFee: feeCalculation.brandFee,
+                        platformFee: feeCalculation.platformFee,
+                        gstOnFee: feeCalculation.gstOnFee,
+                        totalAmount: feeCalculation.totalAmount,
                         estimatedTime: value.estimatedTime,
                         portfolio: value.portfolio || [],
                         address: value.address,
@@ -1117,7 +1196,12 @@ class ApplicationController {
                         applicantType: 'owner', // This is the key difference - owner is inviting
                         clanId: value.applicantType === 'clan' ? applicantId : null,
                         proposal: value.proposal,
-                        quotedPrice: value.quotedPrice,
+                        quotedPrice: feeCalculation.quotedPrice,
+                        creatorFee: feeCalculation.creatorFee,
+                        brandFee: feeCalculation.brandFee,
+                        platformFee: feeCalculation.platformFee,
+                        gstOnFee: feeCalculation.gstOnFee,
+                        totalAmount: feeCalculation.totalAmount,
                         estimatedTime: value.estimatedTime,
                         portfolio: value.portfolio || [],
                         address: value.address,
@@ -1223,7 +1307,19 @@ class ApplicationController {
                 message: existingApplication && inactiveStatuses.includes(existingApplication.status)
                     ? 'Gig re-assigned successfully'
                     : 'Gig invitation sent successfully',
-                data: application
+                data: {
+                    application: application,
+                    feeBreakdown: {
+                        quotedPrice: application.quotedPrice,
+                        creatorFee: application.creatorFee,
+                        brandFee: application.brandFee,
+                        platformFee: application.platformFee,
+                        gstOnFee: application.gstOnFee,
+                        creatorWillReceive: feeCalculation.creatorAmount,
+                        brandWillPay: application.totalAmount,
+                        note: 'Platform fee is split equally: Creator pays 5%, Brand pays 5%'
+                    }
+                }
             });
         } catch (error) {
             console.error('Error sending gig invitation:', error);
@@ -1490,11 +1586,11 @@ class ApplicationController {
             const gigSubmissionsCacheKey = this.cache.generateKey('gig_submissions', id, gig.postedById);
 
             try {
-                await this.cache.cacheManager.del(`gig:${id}`);
-                await this.cache.cacheManager.del(gigSubmissionsCacheKey);
-                console.log(`🗑️ Force deleted gig cache and submissions cache after work submission: ${id}`);
+                await this.cache.invalidateGig(id);
+                await this.cache.cacheManager.invalidateList(gigSubmissionsCacheKey);
+                console.log(`🗑️ Force invalidated gig cache and submissions cache after work submission: ${id}`);
             } catch (error) {
-                console.error('❌ Error force deleting gig cache:', error);
+                console.error('❌ Error force invalidating gig cache:', error);
             }
 
 
@@ -1671,7 +1767,7 @@ class ApplicationController {
                 where: {
                     gigId: id,
                     applicantId: userId,
-                    status: 'APPROVED'
+                    status: 'WORK_IN_PROGRESS'
                 }
             });
 
@@ -1835,7 +1931,7 @@ class ApplicationController {
                 ];
 
                 for (const cacheKey of appDeliveriesCacheKeys) {
-                    await this.cache.cacheManager.del(cacheKey);
+                    await this.cache.cacheManager.invalidateList(cacheKey);
                 }
                 console.log(`🗑️ Force deleted application deliveries cache for application: ${application.id}`);
             } catch (cacheErr) {
@@ -1998,7 +2094,7 @@ class ApplicationController {
 
             try {
                 for (const cacheKey of appDeliveriesCacheKeys) {
-                    await this.cache.cacheManager.del(cacheKey);
+                    await this.cache.cacheManager.invalidateList(cacheKey);
                 }
                 console.log(`🗑️ Force deleted application deliveries cache for application: ${delivery.applicationId}`);
             } catch (error) {
@@ -2111,6 +2207,53 @@ class ApplicationController {
                             data: { status: 'CLOSED' }
                         });
                         console.log('reviewSubmission application closed for applicationId:', submission.applicationId);
+
+                        // Payment stays in HELD_ESCROW - will be processed by daily cron job
+                        const payment = await tx.payment.findUnique({
+                            where: { applicationId: submission.applicationId },
+                            include: { application: true }
+                        });
+
+                        if (payment && payment.status === 'HELD_ESCROW') {
+                            // Validate UPI ID is present
+                            if (!submission.application.upiId) {
+                                console.error('❌ UPI ID not found in application:', submission.applicationId);
+                                throw new Error('Creator UPI ID is missing from application');
+                            }
+
+                            console.log('✅ Submission approved - Payment remains in escrow for cron processing:', {
+                                paymentId: payment.id,
+                                creatorAmount: payment.creatorAmount,
+                                creatorUPI: submission.application.upiId,
+                                status: 'HELD_ESCROW',
+                                willBeProcessedBy: 'Daily cron job within 24-48 hours'
+                            });
+
+                            // Update payment notes to track approval
+                            await tx.payment.update({
+                                where: { id: payment.id },
+                                data: {
+                                    notes: {
+                                        ...payment.notes,
+                                        submissionApproved: true,
+                                        approvedSubmissionId: id,
+                                        approvedAt: new Date().toISOString(),
+                                        pendingCronProcessing: true,
+                                        payoutMethod: 'Cashfree via daily cron job'
+                                    }
+                                }
+                            });
+
+                            console.log('✅ Payment marked for cron processing');
+                        } else if (payment) {
+                            console.log('⚠️ Payment exists but not in HELD_ESCROW status:', {
+                                paymentId: payment.id,
+                                currentStatus: payment.status,
+                                expectedStatus: 'HELD_ESCROW'
+                            });
+                        } else {
+                            console.log('⚠️ No payment found for application:', submission.applicationId);
+                        }
                         // Update application work history for approval
                         await tx.applicationWorkHistory.upsert({
                             where: { applicationId: submission.applicationId },
@@ -2119,7 +2262,7 @@ class ApplicationController {
                                 applicationStatus: 'CLOSED',
                                 submissionStatus: 'APPROVED',
                                 completedAt: new Date(),
-                                paymentStatus: 'PROCESSING',
+                                paymentStatus: 'PENDING', // Payment approved but pending cron processing
                                 lastActivityAt: new Date()
                             },
                             create: {
@@ -2135,7 +2278,7 @@ class ApplicationController {
                                 applicationStatus: 'CLOSED',
                                 submissionStatus: 'APPROVED',
                                 completedAt: new Date(),
-                                paymentStatus: 'PROCESSING',
+                                paymentStatus: 'PENDING', // Payment approved but pending cron processing
                                 lastActivityAt: new Date()
                             }
                         });
@@ -2191,8 +2334,8 @@ class ApplicationController {
             const gigSubmissionsCacheKey = this.cache.generateKey('gig_submissions', submission.gigId, submission.gig.postedById);
 
             try {
-                await this.cache.cacheManager.del(gigSubmissionsCacheKey);
-                console.log(`🗑️ Force deleted gig submissions cache after review: ${gigSubmissionsCacheKey}`);
+                await this.cache.cacheManager.invalidateList(gigSubmissionsCacheKey);
+                console.log(`🗑️ Force invalidated gig submissions cache after review: ${gigSubmissionsCacheKey}`);
 
                 // Also invalidate any other potential gig submission cache variations
                 const additionalCacheKeys = [
@@ -2201,7 +2344,7 @@ class ApplicationController {
                 ];
 
                 for (const key of additionalCacheKeys) {
-                    await this.cache.cacheManager.del(key);
+                    await this.cache.cacheManager.invalidateList(key);
                 }
 
                 console.log(`🧹 Cleared additional gig submissions cache variations for gig: ${submission.gigId}`);
@@ -2211,9 +2354,10 @@ class ApplicationController {
 
 
             // Publish events
-            await this.publishEvent('submission_reviewed', {
+            await this.publishEvent('submission_reviewed_notification', {
                 gigId: submission.gigId,
                 submissionId: id,
+                gigTitle: submission.gig.title,
                 applicantId: submission.submittedById,
                 recipientId: submission.submittedById,
                 status: value.status,
@@ -2225,128 +2369,40 @@ class ApplicationController {
                 gigCompleted: value.status === 'APPROVED'
             });
 
-            // If submission is approved, publish work history events
-            if (value.status === 'APPROVED') {
-                console.log('🎉 [Gig Service] Submission approved - publishing work history events for gig:', submission.gigId);
 
-                // Publish gig.completed event for work history service
-                // await rabbitmqService.publishGigEvent('gig.completed', {
-                //     gigId: submission.gigId,
-                //     userId: submission.submittedById,
-                //     clientId: submission.gig.postedById,
-                //     gigData: {
-                //         title: submission.gig.title,
-                //         description: submission.gig.description,
-                //         category: submission.gig.category,
-                //         skills: submission.gig.skillsRequired || [],
-                //         budgetRange: submission.gig.budgetMin && submission.gig.budgetMax
-                //             ? `${submission.gig.budgetMin}-${submission.gig.budgetMax}`
-                //             : '0-100'
-                //     },
-                //     completionData: {
-                //         completedAt: new Date().toISOString(),
-                //         actualAmount: submission.application?.quotedPrice || submission.gig.budgetMax || 0,
-                //         rating: value.rating,
-                //         feedback: value.feedback,
-                //         withinBudget: true
-                //     },
-                //     deliveryData: {
-                //         deliveryTime: this.calculateDeliveryTime(submission.gig),
-                //         onTime: this.calculateOnTimeDelivery(submission.gig),
-                //         portfolioItems: submission.deliverables?.map(item => ({
-                //             title: item.description || submission.title,
-                //             description: item.description || '',
-                //             type: item.type || 'other',
-                //             url: item.url || null,
-                //             thumbnailUrl: null,
-                //             fileSize: null,
-                //             format: item.type || 'unknown',
-                //             isPublic: true
-                //         })) || []
-                //     }
-                // });
-
-                // Also publish gig.delivered event for the delivery tracking
-                await rabbitmqService.publishGigEvent('gig.delivered', {
-                    gigId: submission.gigId,
-                    userId: submission.submittedById,
-                    clientId: submission.gig.postedById,
-                    deliveryData: {
-                        submissionTitle: submission.title,
-                        deliveredAt: new Date().toISOString()
-                    }
-                });
-
-                // If rating is provided, also publish gig.rated event
-                if (value.rating) {
-                    await rabbitmqService.publishGigEvent('gig.rated', {
-                        gigId: submission.gigId,
-                        userId: submission.submittedById,
-                        clientId: submission.gig.postedById,
-                        rating: value.rating,
-                        feedback: value.feedback,
-                        ratedAt: new Date().toISOString()
-                    });
-                }
-
-                console.log('✅ [Gig Service] Work history events published successfully for gig:', submission.gigId);
-
-                // Publish reputation events for score updates
-                try {
-                    // Publish gig.completed event for reputation service
-                    await rabbitmqService.publishReputationEvent('gig.completed', {
-                        gigId: submission.gigId,
-                        creatorId: submission.submittedById,
-                        clientId: submission.gig.postedById,
-                        rating: value.rating,
-                        completedAt: new Date().toISOString(),
-                        gigData: {
-                            title: submission.gig.title,
-                            category: submission.gig.category,
-                            budgetAmount: submission.application?.quotedPrice || submission.gig.budgetMax || 0
-                        }
-                    });
-
-                    // If rating is provided, also publish gig.rated event for reputation
-                    if (value.rating) {
-                        await rabbitmqService.publishReputationEvent('gig.rated', {
-                            gigId: submission.gigId,
-                            ratedUserId: submission.submittedById,
-                            rating: value.rating,
-                            feedback: value.feedback,
-                            ratedAt: new Date().toISOString()
-                        });
-                    }
-
-                    console.log('✅ [Gig Service] Reputation events published successfully for gig:', submission.gigId);
-                } catch (reputationError) {
-                    console.error('❌ [Gig Service] Failed to publish reputation events:', reputationError);
-                }
-            }
 
             // Send notification to applicant about review result
             let reviewMessage = '';
             if (value.status === 'APPROVED') {
-                reviewMessage = `Great news! Your submission for "${submission.gig.title}" has been approved${value.rating ? (` with a ${value.rating}-star rating`) : ''}`;
+                const payment = await this.prisma.payment.findUnique({
+                    where: { applicationId: submission.applicationId }
+                });
+                const amount = payment ? payment.creatorAmount : 'your payment';
+                reviewMessage = `🎉 Work Approved!\n\nYour payment of ₹${amount} is now held securely in escrow and will be processed within 2-3 working days.\n\nOur automated system processes payments daily through secure banking channels.\n\nYou'll receive a confirmation notification once the payment is transferred to your UPI account!${value.rating ? `\n\nRating: ${value.rating} stars` : ''}`;
             } else if (value.status === 'REJECTED') {
                 reviewMessage = `Your submission for "${submission.gig.title}" needs improvement. Please check the feedback and resubmit.`;
             } else {
                 reviewMessage = `Your submission for "${submission.gig.title}" requires revision. Please check the feedback and make necessary changes.`;
             }
 
-            await this.publishEvent('submission_reviewed_notification', {
-                recipientId: submission.submittedById,
-                recipientType: 'applicant',
-                gigId: submission.gigId,
-                gigTitle: submission.gig.title,
-                submissionId: id,
-                reviewStatus: value.status,
-                rating: value.rating,
-                feedback: value.feedback,
-                message: reviewMessage
-            });
 
-            // Comprehensive cache invalidation after submission review
+
+            // Send notification to brand about submission approval (if approved)
+            if (value.status === 'APPROVED') {
+                const paymentInfo = await this.prisma.payment.findUnique({
+                    where: { applicationId: submission.applicationId }
+                });
+
+                await this.publishEvent('submission_approved_notification', {
+                    recipientId: submission.gig.postedById,
+                    recipientType: 'brand',
+                    gigId: submission.gigId,
+                    gigTitle: submission.gig.title,
+                    submissionId: id,
+                    creatorId: submission.submittedById,
+                    message: `Excellent! You've approved the submission for "${submission.gig.title}". The payment of ₹${paymentInfo?.creatorAmount || 'the amount'} is now held in escrow and will be automatically processed to the creator within 2-3 working days. The gig is now complete.`
+                });
+            }            // Comprehensive cache invalidation after submission review
             await this.cache.invalidateComprehensive({
                 gigId: submission.gigId,
                 postedById: submission.gig.postedById,
@@ -2357,10 +2413,44 @@ class ApplicationController {
                 includeSearch: false
             });
 
+            // Get payment info for response (if submission was approved)
+            let paymentInfo = null;
+            if (value.status === 'APPROVED' && submission.applicationId) {
+                try {
+                    const payment = await this.prisma.payment.findUnique({
+                        where: { applicationId: submission.applicationId },
+                        include: { application: true }
+                    });
+
+                    if (payment) {
+                        paymentInfo = {
+                            paymentId: payment.id,
+                            status: payment.status,
+                            creatorAmount: payment.creatorAmount,
+                            creatorUPI: payment.application.upiId,
+                            releasedAt: payment.releasedAt,
+                            amountDetails: {
+                                quotedPrice: payment.quotedPrice,
+                                creatorFee: payment.creatorFee,
+                                brandFee: payment.brandFee,
+                                platformFee: payment.platformFee,
+                                totalAmount: payment.totalAmount,
+                                creatorAmount: payment.creatorAmount
+                            }
+                        };
+                    }
+                } catch (error) {
+                    console.error('Error fetching payment info for response:', error);
+                }
+            }
+
             res.json({
                 success: true,
                 message: `Submission ${value.status.toLowerCase()} successfully`,
-                data: updatedSubmission
+                data: {
+                    submission: updatedSubmission,
+                    payment: paymentInfo
+                }
             });
         } catch (error) {
             console.error('Error reviewing submission:', error);
@@ -2673,8 +2763,8 @@ class ApplicationController {
             await this.cache.invalidatePattern(`gig_applications:${application.gigId}:*`);
             const gigApplicationsCacheKey = `gig_applications:${application.gigId}:${gig.postedById}`;
             try {
-                const deletedGigApps = await this.cache.cacheManager.del(gigApplicationsCacheKey);
-                console.log(`🗑️ Force deleted gig applications cache for withdrawal: ${gigApplicationsCacheKey}, result: ${deletedGigApps}`);
+                const deletedGigApps = await this.cache.cacheManager.invalidateList(gigApplicationsCacheKey);
+                console.log(`🗑️ Force invalidated gig applications cache for withdrawal: ${gigApplicationsCacheKey}`);
             } catch (error) {
                 console.error('❌ Error force deleting gig applications cache:', error);
             }
@@ -2730,24 +2820,24 @@ class ApplicationController {
 
             // Update application and gig in transaction
             const result = await this.prisma.$transaction(async (tx) => {
-                // Update application
+                // Update application to PAYMENT_PENDING - brand needs to pay now
                 const updatedApplication = await tx.application.update({
                     where: { id },
                     data: {
-                        status: 'APPROVED',
+                        status: 'PAYMENT_PENDING', // Changed from APPROVED to PAYMENT_PENDING
                         respondedAt: new Date()
                     }
                 });
 
-                console.log('approveApplication updated application:', updatedApplication);
+                console.log('approveApplication updated application to PAYMENT_PENDING:', updatedApplication);
 
                 // Update application work history
                 await tx.applicationWorkHistory.upsert({
                     where: { applicationId: id },
                     update: {
                         acceptedAt: new Date(),
-                        applicationStatus: 'APPROVED',
-                        paymentAmount: application.quotedPrice || application.gig.budgetMax || application.gig.budgetMin,
+                        applicationStatus: 'APPROVED', // Use APPROVED instead of PAYMENT_PENDING for work history
+                        paymentAmount: application.totalAmount, // Use total amount including fees
                         paymentStatus: 'PENDING',
                         lastActivityAt: new Date()
                     },
@@ -2986,10 +3076,10 @@ class ApplicationController {
             // Force delete the specific gig applications cache for the gig owner
             try {
                 const gigApplicationsCacheKey = `gig_applications:${application.gigId}:${application.gig.postedById}`;
-                const deletedGigApps = await this.cache.cacheManager.del(gigApplicationsCacheKey);
-                console.log(`🗑️ Force deleted gig applications cache for: ${gigApplicationsCacheKey}, result: ${deletedGigApps}`);
+                await this.cache.cacheManager.invalidateList(gigApplicationsCacheKey);
+                console.log(`🗑️ Force invalidated gig applications cache for: ${gigApplicationsCacheKey}`);
             } catch (error) {
-                console.error('❌ Error force deleting gig applications cache:', error);
+                console.error('❌ Error force invalidating gig applications cache:', error);
             }
 
             // Also invalidate any application status caches (for getMyApplicationToGig endpoint)
@@ -2998,22 +3088,49 @@ class ApplicationController {
 
             // Force invalidate any remaining gig cache entries
             try {
-                const deleted = await this.cache.cacheManager.del(`gig:${application.gigId}`);
-                console.log(`🗑️ Force deleted gig cache for: ${application.gigId}, result: ${deleted}`);
-
-                // Verify deletion
-                const checkAfterDelete = await this.cache.cacheManager.redis.get(`gig:${application.gigId}`);
-                console.log(`✅ [ApplicationController] Post-deletion verification: ${checkAfterDelete ? 'STILL_EXISTS' : 'SUCCESSFULLY_DELETED'}`);
+                await this.cache.invalidateGig(application.gigId);
+                console.log(`🗑️ Force invalidated gig cache for: ${application.gigId}`);
             } catch (error) {
-                console.error('❌ Error force deleting gig cache:', error);
+                console.error('❌ Error force invalidating gig cache:', error);
             }
 
 
+            // Calculate creator amount for response
+            const creatorAmount = application.quotedPrice && application.creatorFee
+                ? application.quotedPrice - application.creatorFee
+                : application.quotedPrice;
+
             res.json({
                 success: true,
-                message: 'Application accepted successfully',
-                data: result[0],
-                assignment: application.applicantType === 'clan' ? result[2] : null
+                message: 'Application approved successfully. Payment required to start work.',
+                data: {
+                    application: result[0],
+                    assignment: application.applicantType === 'clan' ? result[2] : null,
+                    nextStep: 'payment_required',
+                    amountDetails: {
+                        quotedPrice: application.quotedPrice,
+                        creatorFee: application.creatorFee,
+                        brandFee: application.brandFee,
+                        platformFee: application.platformFee,
+                        gstOnFee: application.gstOnFee,
+                        totalAmount: application.totalAmount,
+                        creatorAmount: creatorAmount,
+                        breakdown: {
+                            creatorReceives: creatorAmount,
+                            brandPays: application.totalAmount,
+                            platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                        }
+                    },
+                    paymentDetails: {
+                        totalAmount: application.totalAmount,
+                        breakdown: {
+                            quotedPrice: application.quotedPrice,
+                            platformFee: application.platformFee,
+                            gstOnFee: application.gstOnFee
+                        },
+                        paymentUrl: `/api/applications/${id}/payment/create`
+                    }
+                }
             });
         } catch (error) {
             console.error('Error accepting application:', error);
@@ -3100,8 +3217,8 @@ class ApplicationController {
             await this.cache.invalidatePattern(`gig_applications:${application.gigId}:*`);
             const gigApplicationsCacheKey = `gig_applications:${application.gigId}:${application.gig.postedById}`;
             try {
-                const deletedGigApps = await this.cache.cacheManager.del(gigApplicationsCacheKey);
-                console.log(`🗑️ Force deleted gig applications cache for rejection: ${gigApplicationsCacheKey}, result: ${deletedGigApps}`);
+                await this.cache.cacheManager.invalidateList(gigApplicationsCacheKey);
+                console.log(`🗑️ Force invalidated gig applications cache for rejection: ${gigApplicationsCacheKey}`);
             } catch (error) {
                 console.error('❌ Error force deleting gig applications cache:', error);
             }
@@ -3411,11 +3528,32 @@ class ApplicationController {
             await this.cache.invalidatePattern(`user_applications:${userId}:*`);
             await this.cache.invalidateGig(targetApplication.gigId, targetApplication.gig.postedById);
 
+            // Calculate creator amount for response
+            const creatorAmount = targetApplication.quotedPrice && targetApplication.creatorFee
+                ? targetApplication.quotedPrice - targetApplication.creatorFee
+                : targetApplication.quotedPrice;
+
             res.json({
                 success: true,
                 message: 'Gig invitation accepted',
-                data: result[0],
-                assignment: targetApplication.clanId ? result[2] : null
+                data: {
+                    application: result[0],
+                    assignment: targetApplication.clanId ? result[2] : null,
+                    amountDetails: {
+                        quotedPrice: targetApplication.quotedPrice,
+                        creatorFee: targetApplication.creatorFee,
+                        brandFee: targetApplication.brandFee,
+                        platformFee: targetApplication.platformFee,
+                        gstOnFee: targetApplication.gstOnFee,
+                        totalAmount: targetApplication.totalAmount,
+                        creatorAmount: creatorAmount,
+                        breakdown: {
+                            creatorReceives: creatorAmount,
+                            brandPays: targetApplication.totalAmount,
+                            platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                        }
+                    }
+                }
             });
 
         } catch (error) {
@@ -3608,6 +3746,11 @@ class ApplicationController {
                                 clanId: true,
                                 proposal: true,
                                 quotedPrice: true,
+                                creatorFee: true,
+                                brandFee: true,
+                                platformFee: true,
+                                gstOnFee: true,
+                                totalAmount: true,
                                 estimatedTime: true,
                                 portfolio: true,
                                 status: true,
@@ -3640,27 +3783,40 @@ class ApplicationController {
                 ]);
 
                 // Format applications with additional metadata
-                const formattedApplications = applications.map(app => ({
-                    id: app.id,
-                    gigId: app.gigId,
-                    applicantId: app.applicantId,
-                    applicantType: app.applicantType,
-                    proposal: app.proposal,
-                    quotedPrice: app.quotedPrice,
-                    estimatedTime: app.estimatedTime,
-                    portfolio: app.portfolio,
-                    status: app.status,
-                    appliedAt: app.appliedAt,
-                    respondedAt: app.respondedAt,
-                    rejectionReason: app.rejectionReason,
-                    submissionsCount: app._count.submissions,
-                    gig: {
-                        ...app.gig,
-                        daysOld: Math.floor((new Date() - new Date(app.gig.createdAt)) / (1000 * 60 * 60 * 24)),
-                        daysUntilDeadline: app.gig.deadline ?
-                            Math.ceil((new Date(app.gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
-                    }
-                }));
+                const formattedApplications = applications.map(app => {
+                    // Calculate creator amount if not stored
+                    const creatorAmount = app.quotedPrice && app.creatorFee
+                        ? app.quotedPrice - app.creatorFee
+                        : app.quotedPrice;
+
+                    return {
+                        id: app.id,
+                        gigId: app.gigId,
+                        applicantId: app.applicantId,
+                        applicantType: app.applicantType,
+                        proposal: app.proposal,
+                        quotedPrice: app.quotedPrice,
+                        creatorFee: app.creatorFee,
+                        brandFee: app.brandFee,
+                        platformFee: app.platformFee,
+                        gstOnFee: app.gstOnFee,
+                        totalAmount: app.totalAmount,
+                        creatorAmount: creatorAmount,
+                        estimatedTime: app.estimatedTime,
+                        portfolio: app.portfolio,
+                        status: app.status,
+                        appliedAt: app.appliedAt,
+                        respondedAt: app.respondedAt,
+                        rejectionReason: app.rejectionReason,
+                        submissionsCount: app._count.submissions,
+                        gig: {
+                            ...app.gig,
+                            daysOld: Math.floor((new Date() - new Date(app.gig.createdAt)) / (1000 * 60 * 60 * 24)),
+                            daysUntilDeadline: app.gig.deadline ?
+                                Math.ceil((new Date(app.gig.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null
+                        }
+                    };
+                });
 
                 return {
                     applications: formattedApplications,
@@ -3751,12 +3907,28 @@ class ApplicationController {
                 });
             }
 
+            // Calculate new platform fees if quotedPrice is being updated
+            let updateData = { ...value, updatedAt: new Date() };
+            let feeCalculation = null;
+
+            if (value.quotedPrice && value.quotedPrice !== application.quotedPrice) {
+                feeCalculation = this.calculatePlatformFees(value.quotedPrice);
+                console.log("💰 [Gig Service] Recalculating fees for application update:", feeCalculation);
+
+                updateData = {
+                    ...updateData,
+                    quotedPrice: feeCalculation.quotedPrice,
+                    creatorFee: feeCalculation.creatorFee,
+                    brandFee: feeCalculation.brandFee,
+                    platformFee: feeCalculation.platformFee,
+                    gstOnFee: feeCalculation.gstOnFee,
+                    totalAmount: feeCalculation.totalAmount
+                };
+            }
+
             const updatedApplication = await this.prisma.application.update({
                 where: { id },
-                data: {
-                    ...value,
-                    updatedAt: new Date()
-                }
+                data: updateData
             });
 
             // Invalidate related caches after application update
@@ -3764,10 +3936,34 @@ class ApplicationController {
             await this.cache.invalidatePattern(`user_applications:${userId}:*`);
             await this.cache.invalidatePattern(`received_applications:*`); // Broad invalidation since we don't have gig owner ID
 
+            // Calculate creator amount if not stored
+            const creatorAmount = updatedApplication.quotedPrice && updatedApplication.creatorFee
+                ? updatedApplication.quotedPrice - updatedApplication.creatorFee
+                : updatedApplication.quotedPrice;
+
+            const responseData = {
+                ...updatedApplication,
+                creatorAmount
+            };
+
+            // Add fee breakdown if fees were recalculated
+            if (feeCalculation) {
+                responseData.feeBreakdown = {
+                    quotedPrice: updatedApplication.quotedPrice,
+                    creatorFee: updatedApplication.creatorFee,
+                    brandFee: updatedApplication.brandFee,
+                    platformFee: updatedApplication.platformFee,
+                    gstOnFee: updatedApplication.gstOnFee,
+                    creatorWillReceive: feeCalculation.creatorAmount,
+                    brandWillPay: updatedApplication.totalAmount,
+                    note: 'Platform fee is split equally: Creator pays 5%, Brand pays 5%'
+                };
+            }
+
             res.json({
                 success: true,
                 message: 'Application updated successfully',
-                data: updatedApplication
+                data: responseData
             });
         } catch (error) {
             console.error('Error updating application:', error);
@@ -3848,6 +4044,11 @@ class ApplicationController {
                                 gigId: true,
                                 applicantType: true,
                                 quotedPrice: true,
+                                creatorFee: true,
+                                brandFee: true,
+                                platformFee: true,
+                                gstOnFee: true,
+                                totalAmount: true,
                                 estimatedTime: true,
                                 status: true,
                                 appliedAt: true,
@@ -3877,8 +4078,21 @@ class ApplicationController {
                     )
                 ]);
 
+                // Add calculated creatorAmount to each application
+                const applicationsWithAmounts = applications.map(app => {
+                    // Calculate creator amount if not stored
+                    const creatorAmount = app.quotedPrice && app.creatorFee
+                        ? app.quotedPrice - app.creatorFee
+                        : app.quotedPrice;
+
+                    return {
+                        ...app,
+                        creatorAmount
+                    };
+                });
+
                 return {
-                    applications,
+                    applications: applicationsWithAmounts,
                     pagination: {
                         page: parseInt(page),
                         limit: parseInt(limit),
@@ -3965,9 +4179,29 @@ class ApplicationController {
             // Fetch applicant data for display
             const applicantData = await this.fetchUserData(application.applicantId);
 
+            // Calculate creator amount if not stored
+            const creatorAmount = application.quotedPrice && application.creatorFee
+                ? application.quotedPrice - application.creatorFee
+                : application.quotedPrice;
+
             // Format the response
             const formattedApplication = {
                 ...application,
+                creatorAmount,
+                amountDetails: {
+                    quotedPrice: application.quotedPrice,
+                    creatorFee: application.creatorFee,
+                    brandFee: application.brandFee,
+                    platformFee: application.platformFee,
+                    gstOnFee: application.gstOnFee,
+                    totalAmount: application.totalAmount,
+                    creatorAmount: creatorAmount,
+                    breakdown: {
+                        creatorReceives: creatorAmount,
+                        brandPays: application.totalAmount,
+                        platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                    }
+                },
                 applicant: applicantData,
                 userRole: isGigOwner ? 'gig_owner' : 'applicant'
             };
@@ -3999,10 +4233,20 @@ class ApplicationController {
                 });
             }
 
-            // Find the application
+            // Find the application with amount details
             const application = await this.prisma.application.findUnique({
                 where: { id: applicationId },
-                include: {
+                select: {
+                    id: true,
+                    gigId: true,
+                    applicantId: true,
+                    status: true,
+                    quotedPrice: true,
+                    creatorFee: true,
+                    brandFee: true,
+                    platformFee: true,
+                    gstOnFee: true,
+                    totalAmount: true,
                     gig: {
                         select: {
                             id: true,
@@ -4090,6 +4334,11 @@ class ApplicationController {
                 })
             );
 
+            // Calculate creator amount if not stored
+            const creatorAmount = application.quotedPrice && application.creatorFee
+                ? application.quotedPrice - application.creatorFee
+                : application.quotedPrice;
+
             res.json({
                 success: true,
                 data: {
@@ -4099,7 +4348,21 @@ class ApplicationController {
                         gigId: application.gigId,
                         gigTitle: application.gig.title,
                         applicantId: application.applicantId,
-                        status: application.status
+                        status: application.status,
+                        amountDetails: {
+                            quotedPrice: application.quotedPrice,
+                            creatorFee: application.creatorFee,
+                            brandFee: application.brandFee,
+                            platformFee: application.platformFee,
+                            gstOnFee: application.gstOnFee,
+                            totalAmount: application.totalAmount,
+                            creatorAmount: creatorAmount,
+                            breakdown: {
+                                creatorReceives: creatorAmount,
+                                brandPays: application.totalAmount,
+                                platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                            }
+                        }
                     },
                     pagination: {
                         page: parseInt(page),
