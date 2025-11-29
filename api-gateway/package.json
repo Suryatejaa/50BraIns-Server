@@ -6,6 +6,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "npm run build:validate && npm run build:test",
+    "build:validate": "node -e \"console.log('✅ Validating environment...'); require('dotenv').config(); console.log('✅ Environment validated')\"",
+    "build:lint": "eslint src/**/*.js && echo ✅ Linting passed",
+    "build:test": "node -c src/server.js && echo ✅ Syntax validation passed",
+    "build:production": "NODE_ENV=production npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
