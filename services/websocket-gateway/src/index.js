@@ -111,9 +111,27 @@ class WebSocketGatewayService {
             logger.logConnection('RabbitMQ connection established successfully');
 
             // Initialize all services after RabbitMQ connection is ready
-            await this.wsGateway.notificationService.initialize();
-            await this.wsGateway.gigChatService.initialize();
-            logger.logConnection('All WebSocket services initialized successfully');
+            // Only initialize if the methods exist
+            if (this.wsGateway.notificationService && typeof this.wsGateway.notificationService.initialize === 'function') {
+                try {
+                    await this.wsGateway.notificationService.initialize();
+                    logger.logConnection('Notification service initialized successfully');
+                } catch (error) {
+                    logger.logError('Failed to initialize Notification Service', { error: error.message });
+                }
+            }
+
+            if (this.wsGateway.gigChatService && typeof this.wsGateway.gigChatService.initialize === 'function') {
+                try {
+                    await this.wsGateway.gigChatService.initialize();
+                    logger.logConnection('Gig chat service initialized successfully');
+                } catch (error) {
+                    logger.logError('Failed to initialize Gig Chat Service', { error: error.message });
+                    // Don't let this block the entire initialization
+                }
+            }
+
+            logger.logConnection('All available WebSocket services initialized successfully');
 
         } catch (error) {
             logger.logError('Failed to initialize WebSocket services', { error: error.message });
