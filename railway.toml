@@ -1,10 +1,8 @@
-# Root Railway Configuration for Git-based Deployment
-# This enables git push auto-deployment while maintaining CLI deployment capability
+# Root Railway Configuration for Git-based Deployment  
+# Uses Railway's optimized Railpack builder
 
 [build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
-dockerContext = "api-gateway"
+# Let Railway auto-detect and use Railpack for Node.js
 
 [deploy]
 startCommand = "npm start"

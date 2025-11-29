@@ -1,6 +1,4 @@
-[build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+# CLI Railway Configuration - Let Railpack auto-detect
 
 [deploy]
 startCommand = "npm start"
