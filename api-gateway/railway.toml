@@ -8,6 +8,5 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
 
-[environments.production]
-PORT = "$PORT"
-JWT_SECRET = "$JWT_SECRET"
+[variables]
+RAILWAY_DOCKERFILE_PATH = "Dockerfile"
