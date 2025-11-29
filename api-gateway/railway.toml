@@ -7,6 +7,3 @@ startCommand = "npm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
-
-[variables]
-RAILWAY_DOCKERFILE_PATH = "Dockerfile"
