@@ -1,0 +1,14 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "always"
+
+[environments.production]
+DATABASE_URL = "$DATABASE_URL"
+REDIS_URL = "$REDIS_URL"
+JWT_SECRET = "$JWT_SECRET"

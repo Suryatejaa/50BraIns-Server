@@ -10,17 +10,23 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production
+# Install dependencies
+RUN npm ci
 
 # Copy Prisma schema
 COPY prisma ./prisma/
 
-# Generate Prisma client
-RUN npx prisma generate
-
 # Copy source code
 COPY src ./src/
+
+# Copy scripts if they exist
+COPY scripts* ./scripts/
+
+# Run build process (validate, Prisma generate, test, etc.)
+RUN npm run build:production
+
+# Remove dev dependencies for smaller image
+RUN npm ci --only=production
 
 # Create logs directory
 RUN mkdir -p logs

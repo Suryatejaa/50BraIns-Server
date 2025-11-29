@@ -1,6 +1,9 @@
+# Default Railway Configuration - API Gateway
+# For other services, use Railway CLI with specific docker contexts
+
 [build]
 builder = "dockerfile"
-dockerfilePath = "api-gateway/Dockerfile"
+dockerfilePath = "Dockerfile"
 dockerContext = "api-gateway"
 
 [deploy]
