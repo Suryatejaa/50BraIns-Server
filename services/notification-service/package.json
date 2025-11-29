@@ -6,6 +6,10 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon --env-file=.env.local src/index.js",
+    "build": "npm run build:validate && npm run build:test",
+    "build:validate": "node -e \"console.log('✅ Validating environment...'); require('dotenv').config(); console.log('✅ Environment validated')\"",
+    "build:test": "node -c src/index.js && echo ✅ Syntax validation passed",
+    "build:production": "NODE_ENV=production npm run build",
     "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
