@@ -266,22 +266,22 @@ class AuthService {
             });
 
             // Publish login event to RabbitMQ for notification service
-            try {
-                const rabbitmqService = require('../utils/rabbitmq');
-                await rabbitmqService.publishEvent('user.login', {
-                    id: user.id,
-                    email: user.email,
-                    username: user.username,
-                    roles: user.roles,
-                    loginAt: new Date().toISOString(),
-                    loginMethod: 'password',
-                    ipAddress: null, // Could be passed from controller if needed
-                    userAgent: null   // Could be passed from controller if needed
-                });
-                logger.info('Published user.login event to RabbitMQ', { userId: user.id });
-            } catch (mqError) {
-                logger.error('Failed to publish user.login event to RabbitMQ', mqError);
-            }
+            // try {
+            //     const rabbitmqService = require('../utils/rabbitmq');
+            //     await rabbitmqService.publishEvent('user.login', {
+            //         id: user.id,
+            //         email: user.email,
+            //         username: user.username,
+            //         roles: user.roles,
+            //         loginAt: new Date().toISOString(),
+            //         loginMethod: 'password',
+            //         ipAddress: null, // Could be passed from controller if needed
+            //         userAgent: null   // Could be passed from controller if needed
+            //     });
+            //     logger.info('Published user.login event to RabbitMQ', { userId: user.id });
+            // } catch (mqError) {
+            //     logger.error('Failed to publish user.login event to RabbitMQ', mqError);
+            // }
 
             logger.info(`User logged in: ${user.email}`);
 
@@ -865,19 +865,19 @@ class AuthService {
             });
 
             // Publish login event
-            try {
-                const rabbitmqService = require('../utils/rabbitmq');
-                await rabbitmqService.publishEvent('user.login', {
-                    id: user.id,
-                    email: user.email,
-                    username: user.username,
-                    roles: user.roles,
-                    loginAt: new Date().toISOString(),
-                    loginMethod: 'otp'
-                });
-            } catch (mqError) {
-                logger.error('Failed to publish user.login event to RabbitMQ', mqError);
-            }
+            // try {
+            //     const rabbitmqService = require('../utils/rabbitmq');
+            //     await rabbitmqService.publishEvent('user.login', {
+            //         id: user.id,
+            //         email: user.email,
+            //         username: user.username,
+            //         roles: user.roles,
+            //         loginAt: new Date().toISOString(),
+            //         loginMethod: 'otp'
+            //     });
+            // } catch (mqError) {
+            //     logger.error('Failed to publish user.login event to RabbitMQ', mqError);
+            // }
 
             logger.info(`User logged in via OTP: ${user.email}`);
 

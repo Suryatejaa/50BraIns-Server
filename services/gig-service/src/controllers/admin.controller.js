@@ -465,54 +465,30 @@ class AdminController {
         });
     }
 
-    // User Management
-    async getAllBrands(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Brand management not yet implemented',
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    async getAllInfluencers(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Influencer management not yet implemented',
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    async getUserGigHistory(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'User gig history not yet implemented',
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    async verifyUser(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'User verification not yet implemented',
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    async suspendUser(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'User suspension not yet implemented',
-            timestamp: new Date().toISOString()
-        });
-    }
+    // USER MANAGEMENT METHODS REMOVED
+    // All user-related operations (brands, influencers, verification, suspension)
+    // are handled by the user-service, not the gig-service
 
     // Analytics and Reporting
     async getPlatformStats(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Platform statistics not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { period = 'monthly', startDate, endDate } = req.query;
+            const stats = await adminService.getPlatformStats({ period, startDate, endDate });
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Platform statistics retrieved successfully',
+                data: stats,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error getting platform stats:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to retrieve platform statistics',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async getPerformanceMetrics(req, res) {
@@ -549,11 +525,23 @@ class AdminController {
 
     // System Management
     async getSystemHealth(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'System health monitoring not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const health = await adminService.getSystemHealth();
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'System health retrieved successfully',
+                data: health,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error getting system health:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to retrieve system health',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async getSystemLogs(req, res) {
@@ -565,36 +553,91 @@ class AdminController {
     }
 
     async clearCache(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Cache management not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { cacheType = 'all' } = req.body;
+            const result = await adminService.clearCache(cacheType);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: `Cache cleared successfully: ${cacheType}`,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error clearing cache:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to clear cache',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async getDatabaseStats(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Database statistics not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const stats = await adminService.getDatabaseStats();
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Database statistics retrieved successfully',
+                data: stats,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error getting database stats:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to retrieve database statistics',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     // Bulk Operations
     async bulkGigAction(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Bulk gig operations not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { gigIds, action, parameters = {} } = req.body;
+            const adminId = req.user.id;
+
+            const result = await adminService.bulkGigAction(gigIds, action, parameters, adminId);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: `Bulk action '${action}' completed successfully`,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error performing bulk gig action:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: error.message || 'Failed to perform bulk gig action',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async bulkApplicationAction(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Bulk application operations not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { applicationIds, action, parameters = {} } = req.body;
+            const adminId = req.user.id;
+
+            const result = await adminService.bulkApplicationAction(applicationIds, action, parameters, adminId);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: `Bulk action '${action}' completed successfully`,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error performing bulk application action:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: error.message || 'Failed to perform bulk application action',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async bulkExport(req, res) {
@@ -607,35 +650,89 @@ class AdminController {
 
     // Configuration Management
     async getPlatformSettings(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Platform settings not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const settings = await adminService.getPlatformSettings();
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Platform settings retrieved successfully',
+                data: settings,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error getting platform settings:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to retrieve platform settings',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async updatePlatformSettings(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Platform settings update not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { settings } = req.body;
+            const adminId = req.user.id;
+
+            const updatedSettings = await adminService.updatePlatformSettings(settings, adminId);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Platform settings updated successfully',
+                data: updatedSettings,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error updating platform settings:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to update platform settings',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async getCommissionRates(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Commission rates not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const rates = await adminService.getCommissionRates();
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Commission rates retrieved successfully',
+                data: rates,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error getting commission rates:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to retrieve commission rates',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 
     async updateCommissionRates(req, res) {
-        res.status(StatusCodes.NOT_IMPLEMENTED).json({
-            success: false,
-            error: 'Commission rates update not yet implemented',
-            timestamp: new Date().toISOString()
-        });
+        try {
+            const { rates } = req.body;
+            const adminId = req.user.id;
+
+            const updatedRates = await adminService.updateCommissionRates(rates, adminId);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Commission rates updated successfully',
+                data: updatedRates,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error updating commission rates:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to update commission rates',
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 }
 

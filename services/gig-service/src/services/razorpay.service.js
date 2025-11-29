@@ -216,6 +216,55 @@ class RazorpayService {
 
     // gig-service/src/services/razorpay.service.js (add this method)
 
+    async getPaymentDetails(orderId) {
+        try {
+            console.log('🔍 Fetching payment details from Razorpay for order:', orderId);
+
+            // Get order details first to find associated payments
+            const order = await this.razorpay.orders.fetch(orderId);
+            console.log('📋 Order details:', {
+                id: order.id,
+                amount: order.amount,
+                currency: order.currency,
+                status: order.status
+            });
+
+            // Get payments for this order
+            const payments = await this.razorpay.orders.fetchPayments(orderId);
+            console.log('💳 Found payments for order:', {
+                count: payments.count,
+                items: payments.items?.length || 0
+            });
+
+            if (!payments.items || payments.items.length === 0) {
+                console.log('⚠️ No payments found for order:', orderId);
+                return null;
+            }
+
+            // Return the first (and usually only) payment
+            const payment = payments.items[0];
+            console.log('✅ Payment details retrieved:', {
+                id: payment.id,
+                amount: payment.amount,
+                currency: payment.currency,
+                status: payment.status,
+                method: payment.method,
+                created_at: payment.created_at
+            });
+
+            return payment;
+
+        } catch (error) {
+            console.error('❌ Error fetching payment details from Razorpay:', {
+                orderId,
+                error: error.message,
+                statusCode: error.statusCode,
+                description: error.description
+            });
+            throw error;
+        }
+    }
+
     verifyWebhookSignature(payload, signature) {
         try {
             const crypto = require('crypto');

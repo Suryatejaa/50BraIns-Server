@@ -246,6 +246,7 @@ app.get('/api-docs', (req, res) => {
             clan: '/api/clan/*',
             clans: '/api/clans/*',
             gig: '/api/gig/*',
+            gigAdmin: '/api/gig-admin/*',
             credit: '/api/credit/*',
             reputation: '/api/reputation/*',
             workHistory: '/api/work-history/*',
@@ -374,6 +375,7 @@ app.use('/api/clans/:clanId', proxyMiddleware('clan')); // View individual clan 
 app.use('/api/clan', authMiddleware, proxyMiddleware('clan')); // Legacy clan routes
 
 // Gig service routes (order matters - more specific routes first)
+app.use('/api/gig-admin', authMiddleware, proxyMiddleware('gig')); // Gig admin routes (MUST be before /api/gig)
 app.use('/api/crew', authMiddleware, proxyMiddleware('gig')); // Crew bid management (MUST be before /api/gig)
 app.use('/api/my', authMiddleware, proxyMiddleware('gig')); // User's posted gigs, applications
 app.use('/api/applications', authMiddleware, proxyMiddleware('gig')); // Gig applications

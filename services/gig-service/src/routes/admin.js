@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
-const PayoutController = require('../controllers/payout.controller');
+const payoutController = require('../controllers/payout.controller');
+const submissionController = require('../controllers/submission.controller');
 // Use Railway-optimized cron scheduler in production, regular one in development
 const cronScheduler = process.env.RAILWAY_ENVIRONMENT
     ? require('../services/railwayCronScheduler')
@@ -129,14 +130,28 @@ router.post('/financial/refunds', requireAuth, requireAdmin, adminController.pro
  * Get pending payouts that need to be processed
  * Query params: days (default: 1)
  */
-router.get('/payouts/pending', requireAuth, requireAdmin, require('../controllers/payout.controller').getPendingPayouts);
+router.get('/payouts/pending', requireAuth, requireAdmin, payoutController.getPendingPayouts);
 
 /**
  * POST /admin/payouts/process-daily
  * Daily cron job to process payouts for approved submissions
  * This endpoint should be called by a cron job every 24 hours
  */
-router.post('/payouts/process-daily', requireAuth, requireAdmin, require('../controllers/payout.controller').processDailyPayouts);
+router.post('/payouts/process-daily', requireAuth, requireAdmin, payoutController.processDailyPayouts);
+
+/**
+ * GET /admin/payouts/approved-submissions
+ * Get list of approved submissions ready for manual payout
+ * Query params: page, limit, status
+ */
+router.get('/payouts/approved-submissions', requireAuth, requireAdmin, payoutController.getApprovedSubmissions);
+
+/**
+ * POST /admin/payouts/:paymentId/mark-paid
+ * Mark payment as manually paid and notify users
+ * Body: { transactionId: string, paymentMethod?: string, notes?: string, notifyUsers?: boolean }
+ */
+router.post('/payouts/:paymentId/mark-paid', requireAuth, requireAdmin, payoutController.markPaymentAsPaid);
 
 // ============================================================================
 // DISPUTE MANAGEMENT ROUTES
@@ -169,43 +184,9 @@ router.post('/disputes/:disputeId/resolve', requireAuth, requireAdmin, adminCont
  */
 router.put('/disputes/:disputeId/assign', requireAuth, requireAdmin, adminController.assignDispute);
 
-// ============================================================================
-// USER MANAGEMENT ROUTES (GIG-SPECIFIC)
-// ============================================================================
-
-/**
- * GET /admin/users/brands
- * Get all brand users with gig statistics
- * Query params: status, verificationStatus, sortBy, order, page, limit
- */
-router.get('/users/brands', requireAuth, requireAdmin, adminController.getAllBrands);
-
-/**
- * GET /admin/users/influencers
- * Get all influencer users with performance metrics
- * Query params: status, verificationStatus, performanceLevel, sortBy, order, page, limit
- */
-router.get('/users/influencers', requireAuth, requireAdmin, adminController.getAllInfluencers);
-
-/**
- * GET /admin/users/:userId/gig-history
- * Get complete gig history for a user
- */
-router.get('/users/:userId/gig-history', requireAuth, requireAdmin, adminController.getUserGigHistory);
-
-/**
- * POST /admin/users/:userId/verify
- * Manually verify a brand or influencer account
- * Body: { verificationType: 'BRAND' | 'INFLUENCER', verificationNotes?: string }
- */
-router.post('/users/:userId/verify', requireAuth, requireAdmin, adminController.verifyUser);
-
-/**
- * POST /admin/users/:userId/suspend
- * Suspend user from creating/applying to gigs
- * Body: { reason: string, suspensionDuration?: number, suspensionUntil?: Date }
- */
-router.post('/users/:userId/suspend', requireAuth, requireAdmin, adminController.suspendUser);
+// USER MANAGEMENT ROUTES MOVED TO USER-SERVICE
+// All user-related operations (brands, influencers, verification, suspension)
+// are handled by the user-service, not the gig-service
 
 // ============================================================================
 // ANALYTICS AND REPORTING ROUTES
@@ -330,21 +311,8 @@ router.get('/config/commission-rates', requireAuth, requireAdmin, adminControlle
 router.put('/config/commission-rates', requireAuth, requireAdmin, adminController.updateCommissionRates);
 
 // ============================================================================
-// PAYOUT MANAGEMENT ROUTES
+// CRON JOB MANAGEMENT ROUTES
 // ============================================================================
-
-/**
- * GET /admin/payouts/pending
- * Get pending payouts for review
- * Query params: days (optional, default 1)
- */
-router.get('/payouts/pending', requireAuth, requireAdmin, PayoutController.getPendingPayouts);
-
-/**
- * POST /admin/payouts/process-daily
- * Process daily batch payouts
- */
-router.post('/payouts/process-daily', requireAuth, requireAdmin, PayoutController.processDailyPayouts);
 
 /**
  * GET /admin/cron/status
@@ -386,52 +354,13 @@ router.post('/cron/trigger-payouts', requireAuth, requireAdmin, async (req, res)
     }
 });
 
-// ============================================================================
-// SUBMISSION MANAGEMENT ROUTES
-// ============================================================================
-
-/**
- * POST /admin/submissions/send-reminders
- * Manually trigger submission reminder notifications
- */
-router.post('/submissions/send-reminders', requireAuth, requireAdmin, async (req, res) => {
-    try {
-        const SubmissionController = require('../controllers/submission.controller');
-        await SubmissionController.sendSubmissionReminders(req, res);
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: 'Failed to send submission reminders',
-            details: error.message
-        });
-    }
-});
-
-/**
- * POST /admin/submissions/auto-approve
- * Manually trigger auto-approval of overdue submissions
- */
-router.post('/submissions/auto-approve', requireAuth, requireAdmin, async (req, res) => {
-    try {
-        const SubmissionController = require('../controllers/submission.controller');
-        await SubmissionController.processAutoApprovals(req, res);
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: 'Failed to process auto-approvals',
-            details: error.message
-        });
-    }
-});
-
 /**
  * POST /admin/cron/trigger-submission-reminders
  * Manually trigger submission reminder cron job
  */
 router.post('/cron/trigger-submission-reminders', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const SubmissionController = require('../controllers/submission.controller');
-        await SubmissionController.triggerSubmissionReminders();
+        await submissionController.triggerSubmissionReminders();
         res.json({
             success: true,
             message: 'Submission reminder job triggered successfully'
@@ -451,8 +380,7 @@ router.post('/cron/trigger-submission-reminders', requireAuth, requireAdmin, asy
  */
 router.post('/cron/trigger-auto-approvals', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const SubmissionController = require('../controllers/submission.controller');
-        await SubmissionController.triggerAutoApprovals();
+        await submissionController.triggerAutoApprovals();
         res.json({
             success: true,
             message: 'Auto-approval job triggered successfully'
@@ -465,5 +393,21 @@ router.post('/cron/trigger-auto-approvals', requireAuth, requireAdmin, async (re
         });
     }
 });
+
+// ============================================================================
+// SUBMISSION MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * POST /admin/submissions/send-reminders
+ * Manually trigger submission reminder notifications
+ */
+router.post('/submissions/send-reminders', requireAuth, requireAdmin, submissionController.sendSubmissionReminders);
+
+/**
+ * POST /admin/submissions/auto-approve
+ * Manually trigger auto-approval of overdue submissions
+ */
+router.post('/submissions/auto-approve', requireAuth, requireAdmin, submissionController.processAutoApprovals);
 
 module.exports = router;

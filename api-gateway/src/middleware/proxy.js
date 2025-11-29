@@ -108,6 +108,19 @@ function createServiceProxy(serviceName) {
 
         // Custom path rewrite to remove the service prefix
         pathRewrite: (path, req) => {
+            // Handle /api/gig-admin route first (before general service path check)
+            if (serviceName === 'gig' && path.startsWith('/api/gig-admin')) {
+                const remainingPath = path.substring('/api/gig-admin'.length);
+                const newPath = `/admin${remainingPath}` || '/admin';
+
+                logger.debug(`Gig service admin path rewrite: ${path} -> ${newPath}`, {
+                    service: serviceName,
+                    route: '/api/gig-admin',
+                    requestId: req.requestId
+                });
+                return newPath;
+            }
+
             // Handle kebab-case to camelCase service name mapping
             const serviceNameMap = {
                 'socialMedia': 'social-media',
@@ -165,7 +178,7 @@ function createServiceProxy(serviceName) {
                 }
 
                 // Handle /api/applications, /api/my, /api/submissions, /api/crew, /api/chat routes
-                const gigServiceRoutes = ['/api/applications', '/api/my', '/api/submissions', '/api/crew', '/api/chat'];
+                const gigServiceRoutes = ['/api/applications', '/api/my', '/api/submissions', '/api/crew', '/api/chat', '/api/admin'];
                 for (const route of gigServiceRoutes) {
                     if (path.startsWith(route)) {
                         const remainingPath = path.substring(route.length);

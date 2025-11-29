@@ -614,13 +614,14 @@ enum GigDeliveryCleanupStatus {
 }
 
 enum PaymentStatus {
-  CREATED       // Order created, awaiting payment
-  AUTHORIZED    // Payment authorized by Razorpay
-  HELD_ESCROW   // Payment captured and held in escrow
-  RELEASED      // Payment released to creator
-  REFUNDED      // Payment refunded to brand
-  FAILED        // Payment failed
-  DISPUTED      // Payment disputed
+  CREATED                 // Order created, awaiting payment
+  AUTHORIZED              // Payment authorized by Razorpay
+  HELD_ESCROW             // Payment captured and held in escrow
+  READY_FOR_MANUAL_PAYOUT // Payment approved and ready for manual processing
+  RELEASED                // Payment released to creator
+  REFUNDED                // Payment refunded to brand
+  FAILED                  // Payment failed
+  DISPUTED                // Payment disputed
 }
 
 model CronLeader {

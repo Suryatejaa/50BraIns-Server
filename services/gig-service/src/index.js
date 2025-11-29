@@ -6,17 +6,18 @@ const express = require('express');
 const dotenv = require('dotenv');
 const helmet = require('helmet');
 const compression = require('compression');
+
 const databaseService = require('./services/database');
 const rabbitmqService = require('./services/rabbitmqService');
 const gigCacheService = require('./services/gigCacheService');
 const CreditEventConsumer = require('./services/creditEventConsumer');
 const GigEventConsumer = require('./services/gigEventConsumer');
+
 // Use Railway-optimized cron scheduler in production, regular one in development
 const cronScheduler = process.env.RAILWAY_ENVIRONMENT
     ? require('./services/railwayCronScheduler')
     : require('./services/cronScheduler');
 
-// Import routes
 const healthRoutes = require('./routes/health');
 const gigRoutes = require('./routes/gigs');
 const myRoutes = require('./routes/my');
@@ -228,10 +229,12 @@ process.on('SIGTERM', gracefulShutdown);
 
 // Start server
 async function startServer() {
+
     try {
+
         // Initialize database connection
         await databaseService.connect();
-        console.log('Database connected successfully');
+        console.log('✅ [DEBUG] Database connected successfully');
 
         // Initialize cache service
         await gigCacheService.initialize();
@@ -311,9 +314,15 @@ async function startServer() {
     }
 }
 
+
+
 // Start the server if this file is run directly
 if (require.main === module) {
+
     startServer();
+} else {
+    console.log('🔧 [DEBUG] Module loaded as dependency...');
 }
 
+console.log('✅ [DEBUG] Module export complete');
 module.exports = app;

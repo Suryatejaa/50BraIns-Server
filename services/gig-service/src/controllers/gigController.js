@@ -2264,6 +2264,12 @@ class GigController {
                 }
             };
 
+            const applicationPayment = await this.prisma.payment.findFirst({
+                where: {
+                    applicationId: application.id
+                }
+            });
+
             // Set cache control headers to prevent browser caching
             res.set({
                 'Cache-Control': 'no-cache, no-store, must-revalidate',

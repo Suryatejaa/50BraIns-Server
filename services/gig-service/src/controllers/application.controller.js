@@ -1042,307 +1042,7 @@ class ApplicationController {
         }
     };
 
-    // POST /gigs/:id/assign - Gig owner invites user (creates application with applicantType: "owner")
-    assignGig = async (req, res) => {
-        try {
-            const { id } = req.params;
-            const ownerId = req.headers['x-user-id'] || req.user?.id;
 
-            if (!ownerId) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Authentication required'
-                });
-            }
-
-            // Validate input using assignGig schema
-            const { error, value } = ApplicationController.assignGigSchema.validate(req.body);
-            if (error) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Validation failed',
-                    details: error.details.map(detail => ({
-                        field: detail.path.join('.'),
-                        message: detail.message
-                    }))
-                });
-            }
-
-            // Get gig details
-            const gig = await this.prisma.gig.findUnique({
-                where: { id }
-            });
-
-            if (!gig) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Gig not found'
-                });
-            }
-
-            // Check if user owns this gig
-            if (gig.postedById !== ownerId) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'You can only assign your own gigs'
-                });
-            }
-
-            // Check if gig is in valid status for assignment
-            if (!['OPEN', 'ASSIGNED', 'IN_PROGRESS'].includes(gig.status)) {
-                return res.status(400).json({
-                    success: false,
-                    error: `Cannot assign gig with status: ${gig.status}`
-                });
-            }
-
-            // Extract applicantId from the payload (frontend should provide this)
-            const { applicantId, ...applicationData } = value;
-
-            if (!applicantId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'applicantId is required in the payload'
-                });
-            }
-
-            // Check if there's already an application from this applicant - optimized query
-            const existingApplication = await this.measureQueryPerformance('assignGig_findUnique', () =>
-                this.prisma.application.findUnique({
-                    where: {
-                        applicantId_gigId: {
-                            applicantId: applicantId,
-                            gigId: id
-                        }
-                    },
-                    select: {
-                        id: true,
-                        status: true
-                    }
-                })
-            );
-
-            // Define active statuses that should prevent re-assignment
-            const activeStatuses = ['PENDING', 'APPROVED', 'SUBMITTED'];
-            const inactiveStatuses = ['REJECTED', 'CLOSED', 'WITHDRAWN'];
-
-            if (existingApplication) {
-                // Check if the existing application is still active
-                if (activeStatuses.includes(existingApplication.status)) {
-                    return res.status(409).json({
-                        success: false,
-                        error: `Cannot re-assign gig. The existing application is ${existingApplication.status.toLowerCase()} and requires user action.`,
-                        details: {
-                            applicationId: existingApplication.id,
-                            currentStatus: existingApplication.status,
-                            message: existingApplication.status === 'PENDING'
-                                ? 'User needs to accept or reject the current invitation'
-                                : existingApplication.status === 'APPROVED'
-                                    ? 'Application is approved and work may be in progress'
-                                    : 'Work has been submitted and is pending review'
-                        }
-                    });
-                }
-
-                // Only allow re-assignment if application is in inactive status
-                if (!inactiveStatuses.includes(existingApplication.status)) {
-                    return res.status(400).json({
-                        success: false,
-                        error: `Cannot re-assign gig. Application status '${existingApplication.status}' is not eligible for re-assignment.`,
-                        details: {
-                            applicationId: existingApplication.id,
-                            currentStatus: existingApplication.status,
-                            eligibleForReassignment: inactiveStatuses
-                        }
-                    });
-                }
-            }
-
-            // Calculate platform fees
-            const feeCalculation = this.calculatePlatformFees(value.quotedPrice);
-            console.log("💰 [Gig Service] Fee calculation for assignment:", feeCalculation);
-
-            // Create or update application (only if no existing application or existing is inactive)
-            const application = existingApplication && inactiveStatuses.includes(existingApplication.status)
-                ? await this.prisma.application.update({
-                    where: {
-                        id: existingApplication.id
-                    },
-                    data: {
-                        applicantType: 'owner', // This is the key difference - owner is inviting
-                        clanId: value.applicantType === 'clan' ? applicantId : null,
-                        proposal: value.proposal,
-                        quotedPrice: feeCalculation.quotedPrice,
-                        creatorFee: feeCalculation.creatorFee,
-                        brandFee: feeCalculation.brandFee,
-                        platformFee: feeCalculation.platformFee,
-                        gstOnFee: feeCalculation.gstOnFee,
-                        totalAmount: feeCalculation.totalAmount,
-                        estimatedTime: value.estimatedTime,
-                        portfolio: value.portfolio || [],
-                        address: value.address,
-                        // upiId will be updated when creator accepts the invitation
-                        upiId: 'pending@invitation', // Reset to placeholder
-                        teamPlan: value.applicantType === 'clan' ? normalizedTeamPlan : null,
-                        milestonePlan: value.applicantType === 'clan' ? value.milestonePlan : null,
-                        payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null,
-                        status: 'PENDING' // Reset to pending for user to accept new invitation
-                    }
-                })
-                : await this.prisma.application.create({
-                    data: {
-                        gigId: id,
-                        applicantId: applicantId,
-                        applicantType: 'owner', // This is the key difference - owner is inviting
-                        clanId: value.applicantType === 'clan' ? applicantId : null,
-                        proposal: value.proposal,
-                        quotedPrice: feeCalculation.quotedPrice,
-                        creatorFee: feeCalculation.creatorFee,
-                        brandFee: feeCalculation.brandFee,
-                        platformFee: feeCalculation.platformFee,
-                        gstOnFee: feeCalculation.gstOnFee,
-                        totalAmount: feeCalculation.totalAmount,
-                        estimatedTime: value.estimatedTime,
-                        portfolio: value.portfolio || [],
-                        address: value.address,
-                        // upiId will be provided by creator when accepting the invitation
-                        upiId: 'pending@invitation', // Placeholder until creator accepts
-                        teamPlan: value.applicantType === 'clan' ? normalizedTeamPlan : null,
-                        milestonePlan: value.applicantType === 'clan' ? value.milestonePlan : null,
-                        payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null,
-                        status: 'PENDING' // User needs to accept this invitation
-                    }
-                });
-
-            // Create or update application work history for assignments
-            if (!existingApplication || !inactiveStatuses.includes(existingApplication.status)) {
-                // Create new history entry for new assignment
-                await this.prisma.applicationWorkHistory.create({
-                    data: {
-                        applicationId: application.id,
-                        gigId: id,
-                        applicantId: applicantId,
-                        gigOwnerId: gig.postedById,
-                        gigPrice: gig.budgetMax || gig.budgetMin,
-                        quotedPrice: value.quotedPrice,
-                        appliedAt: application.appliedAt || new Date(),
-                        applicationStatus: 'PENDING',
-                        lastActivityAt: new Date()
-                    }
-                }).catch(() => { }); // Ignore if exists
-            } else {
-                // Update existing history entry
-                await this.prisma.applicationWorkHistory.update({
-                    where: { applicationId: application.id },
-                    data: {
-                        quotedPrice: value.quotedPrice,
-                        applicationStatus: 'PENDING',
-                        lastActivityAt: new Date()
-                    }
-                }).catch(() => { }); // Ignore if not found
-            }
-
-            // Validate and process clan-specific data (similar to applyToGig)
-            let normalizedTeamPlan = null;
-            let normalizedPayoutSplit = null;
-
-            if (value.applicantType === 'clan') {
-                // Normalize team plan
-                if (value.teamPlan && Array.isArray(value.teamPlan)) {
-                    normalizedTeamPlan = value.teamPlan.map(member => ({
-                        role: member.role,
-                        memberId: member.memberId || null,
-                        username: member.username || null,
-                        email: member.email || null,
-                        hours: member.hours || 0,
-                        deliverables: Array.isArray(member.deliverables) ? member.deliverables : []
-                    }));
-                }
-
-                // Normalize payout split
-                if (value.payoutSplit && Array.isArray(value.payoutSplit)) {
-                    normalizedPayoutSplit = value.payoutSplit.map(split => ({
-                        memberId: split.memberId || null,
-                        username: split.username || null,
-                        email: split.email || null,
-                        percentage: split.percentage || null,
-                        fixedAmount: split.fixedAmount || null
-                    }));
-                }
-            }
-
-            // Publish event for gig invitation (different from application_submitted)
-            await this.publishEvent('gig_invitation_sent', {
-                gigId: id,
-                gigTitle: gig.title,
-                applicationId: application.id,
-                invitedUserId: applicantId,
-                recipientId: applicantId,
-                invitedByOwnerId: ownerId,
-                quotedPrice: value.quotedPrice,
-                applicantType: value.applicantType,
-                clanId: value.applicantType === 'clan' ? applicantId : undefined,
-                message: `You have been invited to work on "${gig.title}"`
-            });
-
-            // Send notification to invited user
-            // await this.publishEvent('gig_invitation_notification', {
-            //     recipientId: applicantId,
-            //     recipientType: 'invitee',
-            //     gigId: id,
-            //     gigTitle: gig.title,
-            //     applicationId: application.id,
-            //     invitedByOwnerId: ownerId,
-            //     message: `You have been invited to work on "${gig.title}". Please review and accept the invitation.`
-            // });
-
-            // Invalidate related caches after sending gig invitation
-            await this.cache.invalidateApplication(application.id, id, applicantId);
-            await this.cache.invalidatePattern(`received_applications:${ownerId}:*`);
-            await this.cache.invalidatePattern(`user_applications:${applicantId}:*`);
-            await this.cache.invalidateGig(id, ownerId);
-
-            res.status(201).json({
-                success: true,
-                message: existingApplication && inactiveStatuses.includes(existingApplication.status)
-                    ? 'Gig re-assigned successfully'
-                    : 'Gig invitation sent successfully',
-                data: {
-                    application: application,
-                    feeBreakdown: {
-                        quotedPrice: application.quotedPrice,
-                        creatorFee: application.creatorFee,
-                        brandFee: application.brandFee,
-                        platformFee: application.platformFee,
-                        gstOnFee: application.gstOnFee,
-                        creatorWillReceive: feeCalculation.creatorAmount,
-                        brandWillPay: application.totalAmount,
-                        note: 'Platform fee is split equally: Creator pays 5%, Brand pays 5%'
-                    }
-                }
-            });
-        } catch (error) {
-            console.error('Error sending gig invitation:', error);
-
-            let errorMessage = 'Failed to send gig invitation';
-            let errorDetails = null;
-
-            if (error.message) {
-                errorMessage = error.message;
-            }
-
-            if (error.code) {
-                errorDetails = `Database error: ${error.code}`;
-            }
-
-            res.status(500).json({
-                success: false,
-                error: errorMessage,
-                details: errorDetails,
-                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    };
 
     // POST /gigs/:id/submit - Submit work for a gig (assigned applicant only)
     submitWork = async (req, res) => {
@@ -1377,6 +1077,9 @@ class ApplicationController {
                     gigId: id,
                     applicantId: req.user.id,
                     status: 'DELIVERED'
+                },
+                include: {
+                    payment: true // Include payment to verify escrow status
                 }
             });
             console.log('submitWork found application:', application);
@@ -1384,6 +1087,18 @@ class ApplicationController {
                 return res.status(403).json({
                     success: false,
                     error: 'You must have a delivered application (brand-approved delivery) to submit final work URL for this gig'
+                });
+            }
+
+            // SECURITY: Verify payment is actually held in escrow before allowing work submission
+            if (!application.payment || application.payment.status !== 'HELD_ESCROW') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Cannot submit work: Payment not secured in escrow. Please contact support.',
+                    details: {
+                        paymentStatus: application.payment?.status || 'NO_PAYMENT',
+                        requiredStatus: 'HELD_ESCROW'
+                    }
                 });
             }
 
@@ -1768,6 +1483,9 @@ class ApplicationController {
                     gigId: id,
                     applicantId: userId,
                     status: 'WORK_IN_PROGRESS'
+                },
+                include: {
+                    payment: true // Include payment to verify escrow status
                 }
             });
 
@@ -1775,6 +1493,18 @@ class ApplicationController {
                 return res.status(403).json({
                     success: false,
                     error: 'You are not assigned to this gig or application not approved'
+                });
+            }
+
+            // SECURITY: Verify payment is actually held in escrow before allowing delivery
+            if (!application.payment || application.payment.status !== 'HELD_ESCROW') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Cannot submit delivery: Payment not secured in escrow. Please contact support.',
+                    details: {
+                        paymentStatus: application.payment?.status || 'NO_PAYMENT',
+                        requiredStatus: 'HELD_ESCROW'
+                    }
                 });
             }
 
@@ -2824,7 +2554,7 @@ class ApplicationController {
                 const updatedApplication = await tx.application.update({
                     where: { id },
                     data: {
-                        status: 'PAYMENT_PENDING', // Changed from APPROVED to PAYMENT_PENDING
+                        status: 'PAYMENT_PENDING', // Brand needs to complete payment
                         respondedAt: new Date()
                     }
                 });
@@ -2836,7 +2566,7 @@ class ApplicationController {
                     where: { applicationId: id },
                     update: {
                         acceptedAt: new Date(),
-                        applicationStatus: 'APPROVED', // Use APPROVED instead of PAYMENT_PENDING for work history
+                        applicationStatus: 'APPROVED', // Use APPROVED for work history tracking, not PAYMENT_PENDING
                         paymentAmount: application.totalAmount, // Use total amount including fees
                         paymentStatus: 'PENDING',
                         lastActivityAt: new Date()
@@ -3107,6 +2837,11 @@ class ApplicationController {
                     application: result[0],
                     assignment: application.applicantType === 'clan' ? result[2] : null,
                     nextStep: 'payment_required',
+                    paymentSecurity: {
+                        escrowRequired: true,
+                        workBlockedUntilPayment: true,
+                        message: 'Creator cannot start work until payment is verified and held in escrow'
+                    },
                     amountDetails: {
                         quotedPrice: application.quotedPrice,
                         creatorFee: application.creatorFee,
@@ -3137,6 +2872,317 @@ class ApplicationController {
             res.status(500).json({
                 success: false,
                 error: 'Failed to accept application'
+            });
+        }
+    };
+
+    // POST /gigs/:id/assign - Gig owner invites user (creates application with applicantType: "owner")
+    assignGig = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const ownerId = req.headers['x-user-id'] || req.user?.id;
+
+            if (!ownerId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            // Validate input using assignGig schema
+            const { error, value } = ApplicationController.assignGigSchema.validate(req.body);
+            if (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Validation failed',
+                    details: error.details.map(detail => ({
+                        field: detail.path.join('.'),
+                        message: detail.message
+                    }))
+                });
+            }
+
+            // Get gig details
+            const gig = await this.prisma.gig.findUnique({
+                where: { id }
+            });
+
+            if (!gig) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Gig not found'
+                });
+            }
+
+            // Check if user owns this gig
+            if (gig.postedById !== ownerId) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You can only assign your own gigs'
+                });
+            }
+
+            // Check if gig is in valid status for assignment
+            if (!['OPEN', 'ASSIGNED', 'IN_PROGRESS'].includes(gig.status)) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Cannot assign gig with status: ${gig.status}`
+                });
+            }
+
+            // Extract applicantId from the payload (frontend should provide this)
+            const { applicantId, ...applicationData } = value;
+
+            if (!applicantId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'applicantId is required in the payload'
+                });
+            }
+
+            // Check if there's already an application from this applicant - optimized query
+            const existingApplication = await this.measureQueryPerformance('assignGig_findUnique', () =>
+                this.prisma.application.findUnique({
+                    where: {
+                        applicantId_gigId: {
+                            applicantId: applicantId,
+                            gigId: id
+                        }
+                    },
+                    select: {
+                        id: true,
+                        status: true
+                    }
+                })
+            );
+
+            // Define active statuses that should prevent re-assignment
+            const activeStatuses = ['PENDING', 'APPROVED', 'SUBMITTED'];
+            const inactiveStatuses = ['REJECTED', 'CLOSED', 'WITHDRAWN'];
+
+            if (existingApplication) {
+                // Check if the existing application is still active
+                if (activeStatuses.includes(existingApplication.status)) {
+                    return res.status(409).json({
+                        success: false,
+                        error: `Cannot re-assign gig. The existing application is ${existingApplication.status.toLowerCase()} and requires user action.`,
+                        details: {
+                            applicationId: existingApplication.id,
+                            currentStatus: existingApplication.status,
+                            message: existingApplication.status === 'PENDING'
+                                ? 'User needs to accept or reject the current invitation'
+                                : existingApplication.status === 'APPROVED'
+                                    ? 'Application is approved and work may be in progress'
+                                    : 'Work has been submitted and is pending review'
+                        }
+                    });
+                }
+
+                // Only allow re-assignment if application is in inactive status
+                if (!inactiveStatuses.includes(existingApplication.status)) {
+                    return res.status(400).json({
+                        success: false,
+                        error: `Cannot re-assign gig. Application status '${existingApplication.status}' is not eligible for re-assignment.`,
+                        details: {
+                            applicationId: existingApplication.id,
+                            currentStatus: existingApplication.status,
+                            eligibleForReassignment: inactiveStatuses
+                        }
+                    });
+                }
+            }
+
+            // Calculate platform fees
+            const feeCalculation = this.calculatePlatformFees(value.quotedPrice);
+            console.log("💰 [Gig Service] Fee calculation for assignment:", feeCalculation);
+
+            // Create or update application (only if no existing application or existing is inactive)
+            const application = existingApplication && inactiveStatuses.includes(existingApplication.status)
+                ? await this.prisma.application.update({
+                    where: {
+                        id: existingApplication.id
+                    },
+                    data: {
+                        applicantType: 'owner', // This is the key difference - owner is inviting
+                        clanId: value.applicantType === 'clan' ? applicantId : null,
+                        proposal: value.proposal,
+                        quotedPrice: feeCalculation.quotedPrice,
+                        creatorFee: feeCalculation.creatorFee,
+                        brandFee: feeCalculation.brandFee,
+                        platformFee: feeCalculation.platformFee,
+                        gstOnFee: feeCalculation.gstOnFee,
+                        totalAmount: feeCalculation.totalAmount,
+                        estimatedTime: value.estimatedTime,
+                        portfolio: value.portfolio || [],
+                        address: value.address,
+                        // upiId will be updated when creator accepts the invitation
+                        upiId: 'pending@invitation', // Reset to placeholder
+                        teamPlan: value.applicantType === 'clan' ? normalizedTeamPlan : null,
+                        milestonePlan: value.applicantType === 'clan' ? value.milestonePlan : null,
+                        payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null,
+                        agreedToTerms: true, // Brand agrees to terms when inviting
+                        status: 'PAYMENT_PENDING' // Brand needs to pay now when assigning
+                    }
+                })
+                : await this.prisma.application.create({
+                    data: {
+                        gigId: id,
+                        applicantId: applicantId,
+                        applicantType: 'owner', // This is the key difference - owner is inviting
+                        clanId: value.applicantType === 'clan' ? applicantId : null,
+                        proposal: value.proposal,
+                        quotedPrice: feeCalculation.quotedPrice,
+                        creatorFee: feeCalculation.creatorFee,
+                        brandFee: feeCalculation.brandFee,
+                        platformFee: feeCalculation.platformFee,
+                        gstOnFee: feeCalculation.gstOnFee,
+                        totalAmount: feeCalculation.totalAmount,
+                        estimatedTime: value.estimatedTime,
+                        portfolio: value.portfolio || [],
+                        address: value.address,
+                        // upiId will be provided by creator when accepting the invitation
+                        upiId: 'pending@invitation', // Placeholder until creator accepts
+                        teamPlan: value.applicantType === 'clan' ? normalizedTeamPlan : null,
+                        milestonePlan: value.applicantType === 'clan' ? value.milestonePlan : null,
+                        payoutSplit: value.applicantType === 'clan' ? normalizedPayoutSplit : null,
+                        agreedToTerms: true, // Brand agrees to terms when inviting
+                        status: 'PAYMENT_PENDING' // Brand needs to pay now when assigning
+                    }
+                });
+
+            // Create or update application work history for assignments
+            if (!existingApplication || !inactiveStatuses.includes(existingApplication.status)) {
+                // Create new history entry for new assignment
+                await this.prisma.applicationWorkHistory.create({
+                    data: {
+                        applicationId: application.id,
+                        gigId: id,
+                        applicantId: applicantId,
+                        gigOwnerId: gig.postedById,
+                        gigPrice: gig.budgetMax || gig.budgetMin,
+                        quotedPrice: value.quotedPrice,
+                        appliedAt: application.appliedAt || new Date(),
+                        acceptedAt: new Date(), // Gig is assigned (approved) but payment pending
+                        applicationStatus: 'APPROVED', // Use APPROVED for work history tracking
+                        paymentAmount: application.totalAmount, // Use total amount including fees
+                        paymentStatus: 'PENDING',
+                        lastActivityAt: new Date()
+                    }
+                }).catch(() => { }); // Ignore if exists
+            } else {
+                // Update existing history entry
+                await this.prisma.applicationWorkHistory.update({
+                    where: { applicationId: application.id },
+                    data: {
+                        quotedPrice: value.quotedPrice,
+                        acceptedAt: new Date(), // Gig is assigned (approved) but payment pending
+                        applicationStatus: 'APPROVED', // Use APPROVED for work history tracking
+                        paymentAmount: application.totalAmount, // Use total amount including fees
+                        paymentStatus: 'PENDING',
+                        lastActivityAt: new Date()
+                    }
+                }).catch(() => { }); // Ignore if not found
+            }
+
+            // Validate and process clan-specific data (similar to applyToGig)
+            let normalizedTeamPlan = null;
+            let normalizedPayoutSplit = null;
+
+            if (value.applicantType === 'clan') {
+                // Normalize team plan
+                if (value.teamPlan && Array.isArray(value.teamPlan)) {
+                    normalizedTeamPlan = value.teamPlan.map(member => ({
+                        role: member.role,
+                        memberId: member.memberId || null,
+                        username: member.username || null,
+                        email: member.email || null,
+                        hours: member.hours || 0,
+                        deliverables: Array.isArray(member.deliverables) ? member.deliverables : []
+                    }));
+                }
+
+                // Normalize payout split
+                if (value.payoutSplit && Array.isArray(value.payoutSplit)) {
+                    normalizedPayoutSplit = value.payoutSplit.map(split => ({
+                        memberId: split.memberId || null,
+                        username: split.username || null,
+                        email: split.email || null,
+                        percentage: split.percentage || null,
+                        fixedAmount: split.fixedAmount || null
+                    }));
+                }
+            }
+
+            // Publish event for gig invitation (different from application_submitted)
+            await this.publishEvent('gig_invitation_sent', {
+                gigId: id,
+                gigTitle: gig.title,
+                applicationId: application.id,
+                invitedUserId: applicantId,
+                recipientId: applicantId,
+                invitedByOwnerId: ownerId,
+                quotedPrice: value.quotedPrice,
+                applicantType: value.applicantType,
+                clanId: value.applicantType === 'clan' ? applicantId : undefined,
+                message: `You have been invited to work on "${gig.title}"`
+            });
+
+
+
+            // Invalidate related caches after sending gig invitation
+            await this.cache.invalidateApplication(application.id, id, applicantId);
+            await this.cache.invalidatePattern(`received_applications:${ownerId}:*`);
+            await this.cache.invalidatePattern(`user_applications:${applicantId}:*`);
+            await this.cache.invalidateGig(id, ownerId);
+
+            res.status(201).json({
+                success: true,
+                message: existingApplication && inactiveStatuses.includes(existingApplication.status)
+                    ? 'Gig re-assigned successfully. Payment required to complete assignment.'
+                    : 'Gig assignment created successfully. Payment required to complete assignment.',
+                data: {
+                    application: application,
+                    nextStep: 'payment_required',
+                    feeBreakdown: {
+                        quotedPrice: application.quotedPrice,
+                        creatorFee: application.creatorFee,
+                        brandFee: application.brandFee,
+                        platformFee: application.platformFee,
+                        gstOnFee: application.gstOnFee,
+                        creatorWillReceive: feeCalculation.creatorAmount,
+                        brandWillPay: application.totalAmount,
+                        note: 'Platform fee is split equally: Creator pays 5%, Brand pays 5%'
+                    },
+                    paymentDetails: {
+                        totalAmount: application.totalAmount,
+                        breakdown: {
+                            quotedPrice: application.quotedPrice,
+                            platformFee: application.platformFee,
+                            gstOnFee: application.gstOnFee
+                        },
+                        paymentUrl: `/api/applications/${application.id}/payment/create`
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error sending gig invitation:', error);
+
+            let errorMessage = 'Failed to send gig invitation';
+            let errorDetails = null;
+
+            if (error.message) {
+                errorMessage = error.message;
+            }
+
+            if (error.code) {
+                errorDetails = `Database error: ${error.code}`;
+            }
+
+            res.status(500).json({
+                success: false,
+                error: errorMessage,
+                details: errorDetails,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         }
     };
@@ -3372,17 +3418,34 @@ class ApplicationController {
             if (targetApplication.status !== 'PENDING') {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invitation has already been processed'
+                    error: 'Invitation has already been processed or payment is still pending'
                 });
             }
 
-            // Update application and gig in transaction (same logic as approveApplication)
+            // Check if payment exists and is verified (HELD_ESCROW)
+            const payment = await this.prisma.payment.findUnique({
+                where: { applicationId: targetApplication.id }
+            });
+
+            if (!payment || payment.status !== 'HELD_ESCROW') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Payment must be completed and verified before accepting invitation',
+                    details: {
+                        paymentExists: !!payment,
+                        paymentStatus: payment?.status || 'NO_PAYMENT',
+                        message: 'Brand must complete payment first before you can accept this invitation'
+                    }
+                });
+            }
+
+            // Update application and gig in transaction (payment already verified)
             const result = await this.prisma.$transaction(async (tx) => {
-                // Update application
+                // Update application to WORK_IN_PROGRESS since payment is already verified
                 const updatedApplication = await tx.application.update({
                     where: { id: actualApplicationId },
                     data: {
-                        status: 'APPROVED',
+                        status: 'WORK_IN_PROGRESS', // Payment verified, can start work
                         respondedAt: new Date(),
                         upiId: value.upiId
                         // Note: agreedToTerms is removed since it's not a database field
@@ -3394,8 +3457,8 @@ class ApplicationController {
                     where: { applicationId: actualApplicationId },
                     update: {
                         acceptedAt: new Date(),
-                        applicationStatus: 'APPROVED',
-                        paymentAmount: targetApplication.quotedPrice || targetApplication.gig.budgetMax || targetApplication.gig.budgetMin,
+                        applicationStatus: 'APPROVED', // Use APPROVED for work history tracking
+                        paymentAmount: targetApplication.totalAmount, // Use total amount including fees
                         paymentStatus: 'PENDING',
                         lastActivityAt: new Date()
                     },
@@ -3535,10 +3598,11 @@ class ApplicationController {
 
             res.json({
                 success: true,
-                message: 'Gig invitation accepted',
+                message: 'Gig invitation accepted successfully. You can now start working on the project.',
                 data: {
                     application: result[0],
                     assignment: targetApplication.clanId ? result[2] : null,
+                    nextStep: 'start_work',
                     amountDetails: {
                         quotedPrice: targetApplication.quotedPrice,
                         creatorFee: targetApplication.creatorFee,
@@ -3549,8 +3613,9 @@ class ApplicationController {
                         creatorAmount: creatorAmount,
                         breakdown: {
                             creatorReceives: creatorAmount,
-                            brandPays: targetApplication.totalAmount,
-                            platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%'
+                            brandPaid: targetApplication.totalAmount,
+                            platformFeeNote: 'Split equally: Creator pays 5%, Brand pays 5%',
+                            paymentStatus: 'Brand has already paid during assignment'
                         }
                     }
                 }
@@ -3607,11 +3672,75 @@ class ApplicationController {
                 });
             }
 
-            if (application.status !== 'PENDING') {
+            if (!['PENDING', 'PAYMENT_PENDING'].includes(application.status)) {
                 return res.status(400).json({
                     success: false,
                     error: 'Invitation has already been processed'
                 });
+            }
+
+            // Check if there's a payment that needs to be refunded
+            const payment = await this.prisma.payment.findUnique({
+                where: { applicationId: id },
+                include: { application: true }
+            });
+
+            let refundResult = null;
+            if (payment && ['HELD_ESCROW', 'CREATED'].includes(payment.status)) {
+                try {
+                    // Process refund to brand
+                    console.log('💸 Processing refund for rejected invitation:', {
+                        paymentId: payment.id,
+                        applicationId: id,
+                        refundAmount: payment.totalAmount,
+                        brandId: payment.paidBy
+                    });
+
+                    // Update payment status to REFUNDED
+                    await this.prisma.payment.update({
+                        where: { id: payment.id },
+                        data: {
+                            status: 'REFUNDED',
+                            refundedAt: new Date(),
+                            notes: {
+                                ...payment.notes,
+                                refundReason: 'Invitation rejected by assignee',
+                                refundedAt: new Date().toISOString(),
+                                refundAmount: payment.totalAmount
+                            }
+                        }
+                    });
+
+                    // Publish refund event for notification and tracking
+                    await this.publishEvent('payment_refunded', {
+                        paymentId: payment.id,
+                        applicationId: id,
+                        gigId: application.gigId,
+                        refundAmount: payment.totalAmount,
+                        refundedTo: payment.paidBy,
+                        reason: 'Invitation rejected by assignee',
+                        gigTitle: application.gig.title
+                    });
+
+                    refundResult = {
+                        refunded: true,
+                        amount: payment.totalAmount,
+                        refundedTo: payment.paidBy
+                    };
+
+                    console.log('✅ Refund processed successfully for rejected invitation:', {
+                        paymentId: payment.id,
+                        refundAmount: payment.totalAmount
+                    });
+                } catch (refundError) {
+                    console.error('❌ Error processing refund for rejected invitation:', refundError);
+                    // Don't fail the rejection if refund fails - log for manual processing
+                    refundResult = {
+                        refunded: false,
+                        error: 'Refund processing failed - will be handled manually',
+                        paymentId: payment.id
+                    };
+                }
             }
 
             const updatedApplication = await this.prisma.application.update({
@@ -3649,8 +3778,13 @@ class ApplicationController {
 
             res.json({
                 success: true,
-                message: 'Gig invitation rejected',
-                data: updatedApplication
+                message: refundResult?.refunded
+                    ? 'Gig invitation rejected and payment refunded'
+                    : 'Gig invitation rejected',
+                data: {
+                    ...updatedApplication,
+                    refund: refundResult
+                }
             });
         } catch (error) {
             console.error('Error rejecting gig invitation:', error);

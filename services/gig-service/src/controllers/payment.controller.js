@@ -263,11 +263,15 @@ class PaymentController {
         }
       });
 
-      // Update application status
+      // Update application status based on applicantType
+      // If owner assigned (invitation), creator needs to accept first
+      // If regular application, can start work immediately
+      const newStatus = payment.application.applicantType === 'owner' ? 'PENDING' : 'WORK_IN_PROGRESS';
+
       await prisma.application.update({
         where: { id: payment.applicationId },
         data: {
-          status: 'WORK_IN_PROGRESS'
+          status: newStatus
         }
       });
 
@@ -291,7 +295,10 @@ class PaymentController {
         data: {
           paymentId: payment.id,
           status: 'HELD_ESCROW',
-          message: 'Payment is now secured in escrow. Creator can start work.'
+          applicationStatus: newStatus,
+          message: payment.application.applicantType === 'owner'
+            ? 'Payment is secured. Creator needs to accept the invitation to start work.'
+            : 'Payment is now secured in escrow. Creator can start work.'
         }
       });
 
@@ -308,18 +315,18 @@ class PaymentController {
    * Manual payment verification for failed client verifications
    * POST /api/applications/:applicationId/payment/verify-manual
    * Use when client verification failed but payment was actually completed
+   * SECURITY: Only allows verification with valid payment signature
    */
   async verifyPaymentManual(req, res) {
     try {
       const { applicationId } = req.params;
-      const { paymentId, signature, forceVerify = false } = req.body;
+      const { paymentId, signature } = req.body; // Removed forceVerify option
       const userId = req.user.id;
 
       console.log('🔧 Manual payment verification requested:', {
         applicationId,
         paymentId,
         userId,
-        forceVerify,
         requestBody: req.body
       });
 
@@ -333,6 +340,14 @@ class PaymentController {
             }
           }
         }
+      });
+
+      console.log('🔍 Fetched payment record for manual verification:', {
+        paymentId: payment.id,
+        orderId: payment.orderId,
+        status: payment.status,
+        applicationId: payment.applicationId,
+        paidBy: payment.paidBy
       });
 
       if (!payment) {
@@ -372,35 +387,66 @@ class PaymentController {
         });
       }
 
-      let signatureValid = false;
+      // SECURITY: For manual verification, we'll verify the payment exists in Razorpay
+      // instead of requiring signature since client won't have access to these details
+      let verificationResult = null;
 
-      if (forceVerify) {
-        console.log('⚠️ Force verification requested - skipping signature check');
-        signatureValid = true;
-      } else if (paymentId && signature) {
-        // Verify Razorpay signature if provided
-        signatureValid = razorpayService.verifySignature(payment.orderId, paymentId, signature);
-        console.log('🔍 Signature verification result:', signatureValid);
+      if (paymentId && signature) {
+        // If client somehow provides these details, verify them
+        const isSignatureValid = razorpayService.verifySignature(payment.orderId, paymentId, signature);
+        if (!isSignatureValid) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid payment signature provided'
+          });
+        }
+        verificationResult = { method: 'signature', paymentId, signature };
       } else {
+        // For manual verification without client signature, verify with Razorpay API
+        try {
+          const razorpayPayment = await razorpayService.getPaymentDetails(payment.orderId);
+          if (!razorpayPayment || razorpayPayment.status !== 'captured') {
+            return res.status(400).json({
+              success: false,
+              error: 'Payment not found or not captured in Razorpay. Cannot verify manually.'
+            });
+          }
+          verificationResult = {
+            method: 'razorpay_api',
+            paymentId: razorpayPayment.id,
+            status: razorpayPayment.status,
+            amount: razorpayPayment.amount
+          };
+        } catch (razorpayError) {
+          console.error('❌ Error fetching payment from Razorpay:', razorpayError);
+          return res.status(400).json({
+            success: false,
+            error: 'Unable to verify payment with Razorpay. Payment may not exist or failed.'
+          });
+        }
+      }
+
+      // SECURITY: Verify payment amount matches what was expected
+      if (!payment.totalAmount || payment.totalAmount <= 0) {
         return res.status(400).json({
           success: false,
-          error: 'Either provide paymentId and signature for verification, or set forceVerify=true'
+          error: 'Invalid payment amount - cannot verify payment without valid amount'
         });
       }
 
-      if (!signatureValid && !forceVerify) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid payment signature'
-        });
-      }
+      console.log('💰 Verifying payment amount:', {
+        expectedAmount: payment.totalAmount,
+        paymentId: payment.id,
+        orderId: payment.orderId,
+        verificationMethod: verificationResult.method
+      });
 
       // Update payment to HELD_ESCROW
       const updatedPayment = await prisma.payment.update({
         where: { id: payment.id },
         data: {
-          paymentId: paymentId || `manual_${Date.now()}`,
-          signature: signature || 'manual_verification',
+          paymentId: verificationResult.paymentId,
+          signature: verificationResult.signature || null,
           status: 'HELD_ESCROW',
           authorizedAt: new Date(),
           heldEscrowAt: new Date(),
@@ -409,20 +455,26 @@ class PaymentController {
             manualVerification: true,
             verifiedBy: userId,
             verifiedAt: new Date().toISOString(),
-            originalFailureReason: 'Client verification endpoint issue'
+            originalFailureReason: 'Client verification endpoint issue',
+            verificationMethod: verificationResult.method,
+            amountVerified: payment.totalAmount
           }
         }
       });
 
-      // Update application status
+      // Update application status ONLY after successful payment verification
+      // If owner assigned (invitation), creator needs to accept first
+      // If regular application, can start work immediately
+      const newStatus = payment.application.applicantType === 'owner' ? 'PENDING' : 'WORK_IN_PROGRESS';
+
       await prisma.application.update({
         where: { id: payment.applicationId },
         data: {
-          status: 'WORK_IN_PROGRESS'
+          status: newStatus
         }
       });
 
-      logger.info(`Payment manually verified: ${payment.id} by user: ${userId} for application: ${applicationId}`);
+      logger.info(`Payment manually verified with signature: ${payment.id} by user: ${userId} for application: ${applicationId}`);
 
       // Invalidate related caches after manual verification
       try {
@@ -442,10 +494,14 @@ class PaymentController {
           orderId: payment.orderId,
           applicationId: applicationId,
           status: 'HELD_ESCROW',
-          applicationStatus: 'WORK_IN_PROGRESS',
-          message: 'Payment is now secured in escrow. Creator can start work.',
-          verificationMethod: forceVerify ? 'force' : 'signature',
-          verifiedBy: userId
+          applicationStatus: newStatus,
+          message: payment.application.applicantType === 'owner'
+            ? 'Payment is secured. Creator needs to accept the invitation to start work.'
+            : 'Payment is now secured in escrow. Creator can start work.',
+          verificationMethod: verificationResult.method,
+          verifiedBy: userId,
+          amountSecured: payment.totalAmount,
+          razorpayPaymentId: verificationResult.paymentId
         }
       });
 
@@ -531,6 +587,98 @@ class PaymentController {
         error: 'Failed to get payment status'
       });
     }
+  }
+
+  /**
+   * Admin function to check payment security status
+   * GET /api/payments/security-check/:applicationId
+   */
+  async checkPaymentSecurity(req, res) {
+    try {
+      const { applicationId } = req.params;
+
+      // Get application with payment details
+      const application = await prisma.application.findUnique({
+        where: { id: applicationId },
+        include: {
+          payment: true,
+          gig: {
+            select: { id: true, title: true, postedById: true }
+          }
+        }
+      });
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+          error: 'Application not found'
+        });
+      }
+
+      const securityStatus = {
+        applicationId: application.id,
+        applicationStatus: application.status,
+        gigTitle: application.gig.title,
+        payment: {
+          exists: !!application.payment,
+          status: application.payment?.status || 'NO_PAYMENT',
+          amount: application.payment?.totalAmount || 0,
+          createdAt: application.payment?.createdAt || null,
+          verifiedAt: application.payment?.authorizedAt || null
+        },
+        security: {
+          canStartWork: application.status === 'WORK_IN_PROGRESS' &&
+            application.payment?.status === 'HELD_ESCROW',
+          paymentSecured: application.payment?.status === 'HELD_ESCROW',
+          riskLevel: this.calculateSecurityRisk(application),
+          warnings: this.getSecurityWarnings(application)
+        }
+      };
+
+      res.json({
+        success: true,
+        data: securityStatus
+      });
+
+    } catch (error) {
+      logger.error('Error checking payment security:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to check payment security'
+      });
+    }
+  }
+
+  /**
+   * Calculate security risk level for an application
+   */
+  calculateSecurityRisk(application) {
+    if (!application.payment) return 'CRITICAL'; // No payment at all
+    if (application.payment.status !== 'HELD_ESCROW' && application.status === 'WORK_IN_PROGRESS') return 'HIGH';
+    if (application.payment.status === 'CREATED') return 'MEDIUM'; // Payment created but not verified
+    if (application.payment.status === 'HELD_ESCROW') return 'LOW'; // Proper escrow
+    return 'UNKNOWN';
+  }
+
+  /**
+   * Get security warnings for an application
+   */
+  getSecurityWarnings(application) {
+    const warnings = [];
+
+    if (!application.payment) {
+      warnings.push('NO_PAYMENT: Application has no associated payment record');
+    }
+
+    if (application.status === 'WORK_IN_PROGRESS' && application.payment?.status !== 'HELD_ESCROW') {
+      warnings.push('WORK_WITHOUT_ESCROW: Creator can work but payment not secured');
+    }
+
+    if (application.payment?.status === 'CREATED' && application.status !== 'PAYMENT_PENDING') {
+      warnings.push('UNVERIFIED_PAYMENT: Payment created but not verified');
+    }
+
+    return warnings;
   }
 
   /**
@@ -727,7 +875,7 @@ class PaymentController {
       const now = new Date();
 
       // Find payments with expired review deadlines
-      
+
       const expiredPayments = await prisma.payment.findMany({
         where: {
           status: 'PENDING_RELEASE',

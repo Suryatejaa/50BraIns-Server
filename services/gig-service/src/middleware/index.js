@@ -60,13 +60,28 @@ const requireAuth = (req, res, next) => {
 
 // Admin authorization middleware
 const requireAdmin = (req, res, next) => {
-    if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
+    // Check if user has admin roles in the roles array
+    const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR'];
+    const userRoles = req.user.roles || [req.user.role];
+    const hasAdminRole = userRoles.some(role => adminRoles.includes(role));
+
+    if (!hasAdminRole) {
+        console.log('🚫 Admin access denied:', {
+            userId: req.user.id,
+            userRoles: userRoles,
+            requiredRoles: adminRoles
+        });
         return res.status(403).json({
             success: false,
             error: 'Admin access required',
             timestamp: new Date().toISOString()
         });
     }
+
+    console.log('✅ Admin access granted:', {
+        userId: req.user.id,
+        userRoles: userRoles
+    });
     next();
 };
 
