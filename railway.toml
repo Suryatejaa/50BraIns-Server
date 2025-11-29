@@ -3,7 +3,7 @@
 
 [build]
 builder = "dockerfile"
-dockerfilePath = "api-gateway/Dockerfile"
+dockerfilePath = "Dockerfile"
 dockerContext = "api-gateway"
 
 [deploy]
