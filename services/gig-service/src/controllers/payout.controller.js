@@ -394,6 +394,7 @@ Thank you for your excellent work! 🎉`;
                     payments: pendingPayouts.map(payment => ({
                         id: payment.id,
                         gigTitle: payment.application.gig.title,
+                        creatorId:payment.application.applicantId,
                         creatorAmount: payment.creatorAmount,
                         upiId: payment.application.upiId,
                         approvedAt: payment.application.submissions[0]?.reviewedAt,
@@ -624,10 +625,10 @@ Thank you for your excellent work! 🎉`;
                 });
             }
 
-            if (payment.status !== 'HELD_ESCROW') {
+            if (payment.status !== 'READY_FOR_MANUAL_PAYOUT') {
                 return res.status(400).json({
                     success: false,
-                    error: 'Payment is not in escrow status'
+                    error: 'Payment is not ready for payout'
                 });
             }
 

@@ -359,6 +359,57 @@ class AdminController {
         }
     }
 
+    async getPaidRecords(req, res) {
+        try {
+            const {
+                creatorId,
+                brandId,
+                gigId,
+                dateRange,
+                minAmount,
+                maxAmount,
+                sortBy = 'releasedAt',
+                order = 'desc',
+                page = 1,
+                limit = 20
+            } = req.query;
+
+            const filters = {
+                creatorId,
+                brandId,
+                gigId,
+                dateRange: dateRange ? JSON.parse(dateRange) : null,
+                minAmount,
+                maxAmount
+            };
+
+            const pagination = {
+                sortBy,
+                order,
+                page: parseInt(page),
+                limit: parseInt(limit)
+            };
+
+            const result = await adminService.getPaidRecords(filters, pagination);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Paid records retrieved successfully',
+                data: result.records,
+                pagination: result.pagination,
+                summary: result.summary,
+                timestamp: result.timestamp
+            });
+        } catch (error) {
+            console.error('Error getting paid records:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                error: 'Failed to retrieve paid records',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
     async getRevenueAnalytics(req, res) {
         try {
             const { period = 'monthly', startDate, endDate } = req.query;

@@ -101,6 +101,13 @@ router.get('/financial/overview', requireAuth, requireAdmin, adminController.get
 router.get('/financial/transactions', requireAuth, requireAdmin, adminController.getAllTransactions);
 
 /**
+ * GET /admin/financial/paid-records
+ * Get all successfully released payment records for admins
+ * Query params: creatorId, brandId, gigId, dateRange, minAmount, maxAmount, sortBy, order, page, limit
+ */
+router.get('/financial/paid-records', requireAuth, requireAdmin, adminController.getPaidRecords);
+
+/**
  * GET /admin/financial/revenue
  * Get platform revenue analytics
  * Query params: period (daily, weekly, monthly), startDate, endDate

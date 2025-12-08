@@ -29,7 +29,7 @@ class AdminService {
             }
 
             try {
-                activeGigs = await prisma.gig.count({ where: { status: { in: ['OPEN','ASSIGNED','IN_PROGRESS'] } } }); // Using 'OPEN' instead of 'ACTIVE'
+                activeGigs = await prisma.gig.count({ where: { status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS'] } } }); // Using 'OPEN' instead of 'ACTIVE'
                 console.log('✅ Active gigs count:', activeGigs);
             } catch (error) {
                 console.error('❌ Error getting active gigs:', error.message);
@@ -601,6 +601,7 @@ class AdminService {
     async getAllTransactions(filters, pagination) {
         try {
             // Placeholder implementation - implement based on your transaction schema
+
             return {
                 transactions: [],
                 pagination: {
@@ -614,6 +615,102 @@ class AdminService {
         } catch (error) {
             console.error('Error getting all transactions:', error);
             throw new Error('Failed to retrieve transactions');
+        }
+    }
+
+    async getPaidRecords(filters = {}, pagination = {}) {
+        try {
+            const {
+                creatorId,
+                brandId,
+                gigId,
+                dateRange,
+                minAmount,
+                maxAmount
+            } = filters;
+
+            const {
+                sortBy = 'releasedAt',
+                order = 'desc',
+                page = 1,
+                limit = 20
+            } = pagination;
+
+            // Build where clause - only RELEASED payments
+            const where = {
+                status: 'RELEASED'
+            };
+
+            if (creatorId) where.paidTo = creatorId;
+            if (brandId) where.paidBy = brandId;
+            if (gigId) where.gigId = gigId;
+
+            if (minAmount || maxAmount) {
+                where.totalAmount = {};
+                if (minAmount) where.totalAmount.gte = parseFloat(minAmount);
+                if (maxAmount) where.totalAmount.lte = parseFloat(maxAmount);
+            }
+
+            if (dateRange) {
+                const { startDate, endDate } = dateRange;
+                if (startDate || endDate) {
+                    where.releasedAt = {};
+                    if (startDate) where.releasedAt.gte = new Date(startDate);
+                    if (endDate) where.releasedAt.lte = new Date(endDate);
+                }
+            }
+
+            // Get total count
+            const totalCount = await prisma.payment.count({ where });
+
+            // Get released payments with related data
+            const paidRecords = await prisma.payment.findMany({
+                where,
+                include: {
+                    gig: {
+                        select: {
+                            id: true,
+                            title: true,
+                            category: true,
+                            brandName: true,
+                            budgetMin: true,
+                            budgetMax: true
+                        }
+                    },
+                    application: {
+                        select: {
+                            id: true,
+                            applicantId: true,
+                            quotedPrice: true,
+                            estimatedTime: true
+                        }
+                    }
+                },
+                orderBy: { [sortBy]: order },
+                skip: (page - 1) * limit,
+                take: limit
+            });
+
+            console.log(`📋 Fetched ${paidRecords.length} released payment records for admin`);
+
+            return {
+                records: paidRecords,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(totalCount / limit),
+                    totalCount,
+                    hasNextPage: page < Math.ceil(totalCount / limit),
+                    hasPreviousPage: page > 1
+                },
+                summary: {
+                    totalReleased: totalCount,
+                    totalAmount: paidRecords.reduce((sum, record) => sum + record.totalAmount, 0)
+                },
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Error getting paid records:', error);
+            throw new Error('Failed to retrieve paid records');
         }
     }
 
