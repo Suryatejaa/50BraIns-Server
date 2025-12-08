@@ -57,15 +57,16 @@ class PaymentController {
         });
       }
 
-      // If there's an existing payment that's not completed, handle cleanup
-      if (application.payment) {
-        // Mark old payment attempt as abandoned
-        await prisma.payment.update({
-          where: { id: application.payment.id },
-          data: {
-            status: 'FAILED',
-            failureReason: 'User retry - previous attempt abandoned'
-          }
+      // If there's an existing payment that's not completed, we'll update it instead of creating a new one
+      let payment;
+      const hasExistingPayment = application.payment && !COMPLETED_PAYMENT_STATUSES.includes(application.payment.status);
+
+      if (hasExistingPayment) {
+        // Mark old payment attempt as abandoned and prepare to reuse it
+        console.log('🔄 Reusing existing payment record for retry:', {
+          paymentId: application.payment.id,
+          oldOrderId: application.payment.orderId,
+          oldStatus: application.payment.status
         });
       }
 
@@ -117,8 +118,8 @@ class PaymentController {
         throw razorpayError;
       }
 
-      // Create payment record in escrow state
-      console.log('🔷 Creating payment record in database...');
+      // Create or update payment record
+      console.log('🔷 Creating/updating payment record in database...');
       const paymentData = {
         gigId: application.gigId,
         applicationId: applicationId,
@@ -151,10 +152,31 @@ class PaymentController {
       };
       console.log('🔷 Payment data prepared:', JSON.stringify(paymentData, null, 2));
 
-      const payment = await prisma.payment.create({
-        data: paymentData
-      });
-      console.log('✅ Payment record created:', { paymentId: payment.id });
+      if (hasExistingPayment) {
+        // Update existing payment with new order details
+        payment = await prisma.payment.update({
+          where: { id: application.payment.id },
+          data: {
+            ...paymentData,
+            // Log the previous attempt
+            notes: {
+              ...paymentData.notes,
+              previousOrderId: application.payment.orderId,
+              previousStatus: application.payment.status,
+              previousFailureReason: application.payment.failureReason,
+              retryAttempt: true,
+              retryAt: new Date().toISOString()
+            }
+          }
+        });
+        console.log('✅ Payment record updated for retry:', { paymentId: payment.id, newOrderId: order.id });
+      } else {
+        // Create new payment record
+        payment = await prisma.payment.create({
+          data: paymentData
+        });
+        console.log('✅ Payment record created:', { paymentId: payment.id });
+      }
 
       // Update application payment status
       console.log('🔷 Updating application payment status...');
