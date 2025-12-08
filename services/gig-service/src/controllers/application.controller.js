@@ -1322,7 +1322,326 @@ class ApplicationController {
             });
         }
     };
+    reviewSubmission = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { error, value } = ApplicationController.reviewStatusSchema.validate(req.body);
+            console.log('reviewSubmission validation result:', { error, value });
+            if (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: `${error.details.map(d => d.message).join(', ')}`,
+                    details: error.details.map(d => d.message)
+                });
+            }
 
+            const submission = await this.prisma.submission.findUnique({
+                where: { id },
+                include: {
+                    gig: true,
+                    application: true // Include application to get quotedPrice
+                }
+            });
+
+            if (!submission) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Submission not found'
+                });
+            }
+
+            // Check if user owns the gig
+            if (submission.gig.postedById !== req.user.id) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You can only review submissions for your own gigs'
+                });
+            }
+
+            if (submission.status !== 'PENDING') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Submission has already been reviewed'
+                });
+            }
+
+            // Update submission
+            const updatedSubmission = await this.prisma.submission.update({
+                where: { id },
+                data: {
+                    status: value.status,
+                    feedback: value.feedback,
+                    rating: value.rating,
+                    reviewedAt: new Date()
+                }
+            });
+
+            console.log('reviewSubmission submission:', submission);
+            console.log('reviewSubmission updatedSubmission:', updatedSubmission);
+
+            // Update application status based on review (don't change gig status)
+            if (submission.applicationId) {
+                await this.prisma.$transaction(async (tx) => {
+                    if (value.status === 'APPROVED') {
+                        // Update application status to CLOSED when submission is approved
+                        await tx.application.update({
+                            where: { id: submission.applicationId },
+                            data: { status: 'CLOSED' }
+                        });
+                        console.log('reviewSubmission application closed for applicationId:', submission.applicationId);
+
+                        // Payment stays in HELD_ESCROW - will be processed by daily cron job
+                        const payment = await tx.payment.findUnique({
+                            where: { applicationId: submission.applicationId },
+                            include: { application: true }
+                        });
+
+                        if (payment && payment.status === 'HELD_ESCROW') {
+                            // Validate UPI ID is present
+                            if (!submission.application.upiId) {
+                                console.error('❌ UPI ID not found in application:', submission.applicationId);
+                                throw new Error('Creator UPI ID is missing from application');
+                            }
+
+                            console.log('✅ Submission approved - Payment remains in escrow for cron processing:', {
+                                paymentId: payment.id,
+                                creatorAmount: payment.creatorAmount,
+                                creatorUPI: submission.application.upiId,
+                                status: 'HELD_ESCROW',
+                                willBeProcessedBy: 'Daily cron job within 24-48 hours'
+                            });
+
+                            // Update payment notes to track approval
+                            await tx.payment.update({
+                                where: { id: payment.id },
+                                data: {
+                                    notes: {
+                                        ...payment.notes,
+                                        submissionApproved: true,
+                                        approvedSubmissionId: id,
+                                        approvedAt: new Date().toISOString(),
+                                        pendingCronProcessing: true,
+                                        payoutMethod: 'Cashfree via daily cron job'
+                                    }
+                                }
+                            });
+
+                            console.log('✅ Payment marked for cron processing');
+                        } else if (payment) {
+                            console.log('⚠️ Payment exists but not in HELD_ESCROW status:', {
+                                paymentId: payment.id,
+                                currentStatus: payment.status,
+                                expectedStatus: 'HELD_ESCROW'
+                            });
+                        } else {
+                            console.log('⚠️ No payment found for application:', submission.applicationId);
+                        }
+                        // Update application work history for approval
+                        await tx.applicationWorkHistory.upsert({
+                            where: { applicationId: submission.applicationId },
+                            update: {
+                                workReviewedAt: new Date(),
+                                applicationStatus: 'CLOSED',
+                                submissionStatus: 'APPROVED',
+                                completedAt: new Date(),
+                                paymentStatus: 'PENDING', // Payment approved but pending cron processing
+                                lastActivityAt: new Date()
+                            },
+                            create: {
+                                applicationId: submission.applicationId,
+                                gigId: submission.gigId,
+                                applicantId: submission.submittedById,
+                                gigOwnerId: submission.gig.postedById,
+                                gigPrice: submission.gig.budgetMax || submission.gig.budgetMin,
+                                quotedPrice: submission.application?.quotedPrice,
+                                appliedAt: submission.application?.appliedAt || new Date(),
+                                workSubmittedAt: submission.submittedAt,
+                                workReviewedAt: new Date(),
+                                applicationStatus: 'CLOSED',
+                                submissionStatus: 'APPROVED',
+                                completedAt: new Date(),
+                                paymentStatus: 'PENDING', // Payment approved but pending cron processing
+                                lastActivityAt: new Date()
+                            }
+                        });
+
+                    } else {
+                        // Handle REJECTED status - revert application status back to APPROVED for revision
+                        await tx.application.update({
+                            where: { id: submission.applicationId },
+                            data: { status: 'APPROVED' }
+                        });
+
+                        // Update work history for revision
+                        await tx.applicationWorkHistory.upsert({
+                            where: { applicationId: submission.applicationId },
+                            update: {
+                                workReviewedAt: new Date(),
+                                submissionStatus: 'REJECTED',
+                                revisionCount: { increment: 1 },
+                                lastActivityAt: new Date()
+                            },
+                            create: {
+                                applicationId: submission.applicationId,
+                                gigId: submission.gigId,
+                                applicantId: submission.submittedById,
+                                gigOwnerId: submission.gig.postedById,
+                                gigPrice: submission.gig.budgetMax || submission.gig.budgetMin,
+                                quotedPrice: submission.application?.quotedPrice,
+                                appliedAt: submission.application?.appliedAt || new Date(),
+                                workSubmittedAt: submission.submittedAt,
+                                workReviewedAt: new Date(),
+                                submissionStatus: 'REJECTED',
+                                revisionCount: 1,
+                                lastActivityAt: new Date(),
+                                applicationStatus: 'APPROVED' // Since application is reverted
+                            }
+                        });
+
+                    }
+                });
+            }
+            console.log('reviewSubmission updated application status based on submission review');
+
+            // Invalidate related caches after submission review
+            await this.cache.invalidateApplication(id, submission.gigId, submission.submittedById);
+            await this.cache.invalidatePattern(`received_applications:${submission.gig.postedById}:*`);
+            await this.cache.invalidatePattern(`user_applications:${submission.submittedById}:*`);
+            await this.cache.invalidateGig(submission.gigId, submission.gig.postedById);
+
+            // Invalidate gig submissions cache for the gig owner - COMPREHENSIVE FIX
+            await this.cache.invalidatePattern(`gig_submissions:${submission.gigId}:*`);
+
+            // Generate proper cache key using the same method as getGigSubmissions
+            const gigSubmissionsCacheKey = this.cache.generateKey('gig_submissions', submission.gigId, submission.gig.postedById);
+
+            try {
+                await this.cache.cacheManager.invalidateList(gigSubmissionsCacheKey);
+                console.log(`🗑️ Force invalidated gig submissions cache after review: ${gigSubmissionsCacheKey}`);
+
+                // Also invalidate any other potential gig submission cache variations
+                const additionalCacheKeys = [
+                    `gig_submissions:${submission.gigId}`,
+                    `gig_submissions:${submission.gigId}:${submission.gig.postedById}`,
+                ];
+
+                for (const key of additionalCacheKeys) {
+                    await this.cache.cacheManager.invalidateList(key);
+                }
+
+                console.log(`🧹 Cleared additional gig submissions cache variations for gig: ${submission.gigId}`);
+            } catch (error) {
+                console.error('❌ Error force deleting gig submissions cache:', error);
+            }
+
+
+            // Publish events
+            await this.publishEvent('submission_reviewed_notification', {
+                gigId: submission.gigId,
+                submissionId: id,
+                gigTitle: submission.gig.title,
+                applicantId: submission.submittedById,
+                recipientId: submission.submittedById,
+                status: value.status,
+                feedback: value.feedback || null,
+                reviewStatus: value.status,
+                submittedById: submission.submittedById,
+                gigOwnerId: submission.gig.postedById,
+                rating: value.rating,
+                gigCompleted: value.status === 'APPROVED'
+            });
+
+
+
+            // Send notification to applicant about review result
+            let reviewMessage = '';
+            if (value.status === 'APPROVED') {
+                const payment = await this.prisma.payment.findUnique({
+                    where: { applicationId: submission.applicationId }
+                });
+                const amount = payment ? payment.creatorAmount : 'your payment';
+                reviewMessage = `🎉 Work Approved!\n\nYour payment of ₹${amount} is now held securely in escrow and will be processed within 2-3 working days.\n\nOur automated system processes payments daily through secure banking channels.\n\nYou'll receive a confirmation notification once the payment is transferred to your UPI account!${value.rating ? `\n\nRating: ${value.rating} stars` : ''}`;
+            } else if (value.status === 'REJECTED') {
+                reviewMessage = `Your submission for "${submission.gig.title}" needs improvement. Please check the feedback and resubmit.`;
+            } else {
+                reviewMessage = `Your submission for "${submission.gig.title}" requires revision. Please check the feedback and make necessary changes.`;
+            }
+
+
+
+            // Send notification to brand about submission approval (if approved)
+            if (value.status === 'APPROVED') {
+                const paymentInfo = await this.prisma.payment.findUnique({
+                    where: { applicationId: submission.applicationId }
+                });
+
+                await this.publishEvent('submission_approved_notification', {
+                    recipientId: submission.gig.postedById,
+                    recipientType: 'brand',
+                    gigId: submission.gigId,
+                    gigTitle: submission.gig.title,
+                    submissionId: id,
+                    creatorId: submission.submittedById,
+                    message: `Excellent! You've approved the submission for "${submission.gig.title}". The payment of ₹${paymentInfo?.creatorAmount || 'the amount'} is now held in escrow and will be automatically processed to the creator within 2-3 working days. The gig is now complete.`
+                });
+            }            // Comprehensive cache invalidation after submission review
+            await this.cache.invalidateComprehensive({
+                gigId: submission.gigId,
+                postedById: submission.gig.postedById,
+                applicantId: submission.submittedById,
+                submissionId: id,
+                applicationId: submission.applicationId,
+                includeStats: value.status === 'APPROVED', // Include stats only on approval
+                includeSearch: false
+            });
+
+            // Get payment info for response (if submission was approved)
+            let paymentInfo = null;
+            if (value.status === 'APPROVED' && submission.applicationId) {
+                try {
+                    const payment = await this.prisma.payment.findUnique({
+                        where: { applicationId: submission.applicationId },
+                        include: { application: true }
+                    });
+
+                    if (payment) {
+                        paymentInfo = {
+                            paymentId: payment.id,
+                            status: payment.status,
+                            creatorAmount: payment.creatorAmount,
+                            creatorUPI: payment.application.upiId,
+                            releasedAt: payment.releasedAt,
+                            amountDetails: {
+                                quotedPrice: payment.quotedPrice,
+                                creatorFee: payment.creatorFee,
+                                brandFee: payment.brandFee,
+                                platformFee: payment.platformFee,
+                                totalAmount: payment.totalAmount,
+                                creatorAmount: payment.creatorAmount
+                            }
+                        };
+                    }
+                } catch (error) {
+                    console.error('Error fetching payment info for response:', error);
+                }
+            }
+
+            res.json({
+                success: true,
+                message: `Submission ${value.status.toLowerCase()} successfully`,
+                data: {
+                    submission: updatedSubmission,
+                    payment: paymentInfo
+                }
+            });
+        } catch (error) {
+            console.error('Error reviewing submission:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to review submission'
+            });
+        }
+    };
     // GET /api/applications/:applicationId/status
     // Check if creator can submit delivery
     getDeliveryStatus = async (req, res) => {
@@ -1689,8 +2008,6 @@ class ApplicationController {
         }
     };
 
-
-
     // POST /gigs/deliveries/:id/review - Review a delivery (brand only)
     reviewDelivery = async (req, res) => {
         try {
@@ -1780,7 +2097,7 @@ class ApplicationController {
                 });
 
                 // Keep application in delivery submitted state for revision
-                applicationStatus = 'APPROVED'; // Reset to approved so they can submit DELIVERY AGAIN
+                applicationStatus = 'WORK_IN_PROGRESS'; // Reset to approved so they can submit DELIVERY AGAIN
                 await this.prisma.application.update({
                     where: { id: delivery.applicationId },
                     data: { status: applicationStatus }
@@ -1870,332 +2187,16 @@ class ApplicationController {
         }
     };
 
-    reviewSubmission = async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { error, value } = ApplicationController.reviewStatusSchema.validate(req.body);
-            console.log('reviewSubmission validation result:', { error, value });
-            if (error) {
-                return res.status(400).json({
-                    success: false,
-                    error: `${error.details.map(d => d.message).join(', ')}`,
-                    details: error.details.map(d => d.message)
-                });
-            }
-
-            const submission = await this.prisma.submission.findUnique({
-                where: { id },
-                include: {
-                    gig: true,
-                    application: true // Include application to get quotedPrice
-                }
-            });
-
-            if (!submission) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Submission not found'
-                });
-            }
-
-            // Check if user owns the gig
-            if (submission.gig.postedById !== req.user.id) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'You can only review submissions for your own gigs'
-                });
-            }
-
-            if (submission.status !== 'PENDING') {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Submission has already been reviewed'
-                });
-            }
-
-            // Update submission
-            const updatedSubmission = await this.prisma.submission.update({
-                where: { id },
-                data: {
-                    status: value.status,
-                    feedback: value.feedback,
-                    rating: value.rating,
-                    reviewedAt: new Date()
-                }
-            });
-
-            console.log('reviewSubmission submission:', submission);
-            console.log('reviewSubmission updatedSubmission:', updatedSubmission);
-
-            // Update application status based on review (don't change gig status)
-            if (submission.applicationId) {
-                await this.prisma.$transaction(async (tx) => {
-                    if (value.status === 'APPROVED') {
-                        // Update application status to CLOSED when submission is approved
-                        await tx.application.update({
-                            where: { id: submission.applicationId },
-                            data: { status: 'CLOSED' }
-                        });
-                        console.log('reviewSubmission application closed for applicationId:', submission.applicationId);
-
-                        // Payment stays in HELD_ESCROW - will be processed by daily cron job
-                        const payment = await tx.payment.findUnique({
-                            where: { applicationId: submission.applicationId },
-                            include: { application: true }
-                        });
-
-                        if (payment && payment.status === 'HELD_ESCROW') {
-                            // Validate UPI ID is present
-                            if (!submission.application.upiId) {
-                                console.error('❌ UPI ID not found in application:', submission.applicationId);
-                                throw new Error('Creator UPI ID is missing from application');
-                            }
-
-                            console.log('✅ Submission approved - Payment remains in escrow for cron processing:', {
-                                paymentId: payment.id,
-                                creatorAmount: payment.creatorAmount,
-                                creatorUPI: submission.application.upiId,
-                                status: 'HELD_ESCROW',
-                                willBeProcessedBy: 'Daily cron job within 24-48 hours'
-                            });
-
-                            // Update payment notes to track approval
-                            await tx.payment.update({
-                                where: { id: payment.id },
-                                data: {
-                                    notes: {
-                                        ...payment.notes,
-                                        submissionApproved: true,
-                                        approvedSubmissionId: id,
-                                        approvedAt: new Date().toISOString(),
-                                        pendingCronProcessing: true,
-                                        payoutMethod: 'Cashfree via daily cron job'
-                                    }
-                                }
-                            });
-
-                            console.log('✅ Payment marked for cron processing');
-                        } else if (payment) {
-                            console.log('⚠️ Payment exists but not in HELD_ESCROW status:', {
-                                paymentId: payment.id,
-                                currentStatus: payment.status,
-                                expectedStatus: 'HELD_ESCROW'
-                            });
-                        } else {
-                            console.log('⚠️ No payment found for application:', submission.applicationId);
-                        }
-                        // Update application work history for approval
-                        await tx.applicationWorkHistory.upsert({
-                            where: { applicationId: submission.applicationId },
-                            update: {
-                                workReviewedAt: new Date(),
-                                applicationStatus: 'CLOSED',
-                                submissionStatus: 'APPROVED',
-                                completedAt: new Date(),
-                                paymentStatus: 'PENDING', // Payment approved but pending cron processing
-                                lastActivityAt: new Date()
-                            },
-                            create: {
-                                applicationId: submission.applicationId,
-                                gigId: submission.gigId,
-                                applicantId: submission.submittedById,
-                                gigOwnerId: submission.gig.postedById,
-                                gigPrice: submission.gig.budgetMax || submission.gig.budgetMin,
-                                quotedPrice: submission.application?.quotedPrice,
-                                appliedAt: submission.application?.appliedAt || new Date(),
-                                workSubmittedAt: submission.submittedAt,
-                                workReviewedAt: new Date(),
-                                applicationStatus: 'CLOSED',
-                                submissionStatus: 'APPROVED',
-                                completedAt: new Date(),
-                                paymentStatus: 'PENDING', // Payment approved but pending cron processing
-                                lastActivityAt: new Date()
-                            }
-                        });
-
-                    } else {
-                        // Handle REJECTED status - revert application status back to APPROVED for revision
-                        await tx.application.update({
-                            where: { id: submission.applicationId },
-                            data: { status: 'APPROVED' }
-                        });
-
-                        // Update work history for revision
-                        await tx.applicationWorkHistory.upsert({
-                            where: { applicationId: submission.applicationId },
-                            update: {
-                                workReviewedAt: new Date(),
-                                submissionStatus: 'REJECTED',
-                                revisionCount: { increment: 1 },
-                                lastActivityAt: new Date()
-                            },
-                            create: {
-                                applicationId: submission.applicationId,
-                                gigId: submission.gigId,
-                                applicantId: submission.submittedById,
-                                gigOwnerId: submission.gig.postedById,
-                                gigPrice: submission.gig.budgetMax || submission.gig.budgetMin,
-                                quotedPrice: submission.application?.quotedPrice,
-                                appliedAt: submission.application?.appliedAt || new Date(),
-                                workSubmittedAt: submission.submittedAt,
-                                workReviewedAt: new Date(),
-                                submissionStatus: 'REJECTED',
-                                revisionCount: 1,
-                                lastActivityAt: new Date(),
-                                applicationStatus: 'APPROVED' // Since application is reverted
-                            }
-                        });
-
-                    }
-                });
-            }
-            console.log('reviewSubmission updated application status based on submission review');
-
-            // Invalidate related caches after submission review
-            await this.cache.invalidateApplication(id, submission.gigId, submission.submittedById);
-            await this.cache.invalidatePattern(`received_applications:${submission.gig.postedById}:*`);
-            await this.cache.invalidatePattern(`user_applications:${submission.submittedById}:*`);
-            await this.cache.invalidateGig(submission.gigId, submission.gig.postedById);
-
-            // Invalidate gig submissions cache for the gig owner - COMPREHENSIVE FIX
-            await this.cache.invalidatePattern(`gig_submissions:${submission.gigId}:*`);
-
-            // Generate proper cache key using the same method as getGigSubmissions
-            const gigSubmissionsCacheKey = this.cache.generateKey('gig_submissions', submission.gigId, submission.gig.postedById);
-
-            try {
-                await this.cache.cacheManager.invalidateList(gigSubmissionsCacheKey);
-                console.log(`🗑️ Force invalidated gig submissions cache after review: ${gigSubmissionsCacheKey}`);
-
-                // Also invalidate any other potential gig submission cache variations
-                const additionalCacheKeys = [
-                    `gig_submissions:${submission.gigId}`,
-                    `gig_submissions:${submission.gigId}:${submission.gig.postedById}`,
-                ];
-
-                for (const key of additionalCacheKeys) {
-                    await this.cache.cacheManager.invalidateList(key);
-                }
-
-                console.log(`🧹 Cleared additional gig submissions cache variations for gig: ${submission.gigId}`);
-            } catch (error) {
-                console.error('❌ Error force deleting gig submissions cache:', error);
-            }
-
-
-            // Publish events
-            await this.publishEvent('submission_reviewed_notification', {
-                gigId: submission.gigId,
-                submissionId: id,
-                gigTitle: submission.gig.title,
-                applicantId: submission.submittedById,
-                recipientId: submission.submittedById,
-                status: value.status,
-                feedback: value.feedback || null,
-                reviewStatus: value.status,
-                submittedById: submission.submittedById,
-                gigOwnerId: submission.gig.postedById,
-                rating: value.rating,
-                gigCompleted: value.status === 'APPROVED'
-            });
-
-
-
-            // Send notification to applicant about review result
-            let reviewMessage = '';
-            if (value.status === 'APPROVED') {
-                const payment = await this.prisma.payment.findUnique({
-                    where: { applicationId: submission.applicationId }
-                });
-                const amount = payment ? payment.creatorAmount : 'your payment';
-                reviewMessage = `🎉 Work Approved!\n\nYour payment of ₹${amount} is now held securely in escrow and will be processed within 2-3 working days.\n\nOur automated system processes payments daily through secure banking channels.\n\nYou'll receive a confirmation notification once the payment is transferred to your UPI account!${value.rating ? `\n\nRating: ${value.rating} stars` : ''}`;
-            } else if (value.status === 'REJECTED') {
-                reviewMessage = `Your submission for "${submission.gig.title}" needs improvement. Please check the feedback and resubmit.`;
-            } else {
-                reviewMessage = `Your submission for "${submission.gig.title}" requires revision. Please check the feedback and make necessary changes.`;
-            }
-
-
-
-            // Send notification to brand about submission approval (if approved)
-            if (value.status === 'APPROVED') {
-                const paymentInfo = await this.prisma.payment.findUnique({
-                    where: { applicationId: submission.applicationId }
-                });
-
-                await this.publishEvent('submission_approved_notification', {
-                    recipientId: submission.gig.postedById,
-                    recipientType: 'brand',
-                    gigId: submission.gigId,
-                    gigTitle: submission.gig.title,
-                    submissionId: id,
-                    creatorId: submission.submittedById,
-                    message: `Excellent! You've approved the submission for "${submission.gig.title}". The payment of ₹${paymentInfo?.creatorAmount || 'the amount'} is now held in escrow and will be automatically processed to the creator within 2-3 working days. The gig is now complete.`
-                });
-            }            // Comprehensive cache invalidation after submission review
-            await this.cache.invalidateComprehensive({
-                gigId: submission.gigId,
-                postedById: submission.gig.postedById,
-                applicantId: submission.submittedById,
-                submissionId: id,
-                applicationId: submission.applicationId,
-                includeStats: value.status === 'APPROVED', // Include stats only on approval
-                includeSearch: false
-            });
-
-            // Get payment info for response (if submission was approved)
-            let paymentInfo = null;
-            if (value.status === 'APPROVED' && submission.applicationId) {
-                try {
-                    const payment = await this.prisma.payment.findUnique({
-                        where: { applicationId: submission.applicationId },
-                        include: { application: true }
-                    });
-
-                    if (payment) {
-                        paymentInfo = {
-                            paymentId: payment.id,
-                            status: payment.status,
-                            creatorAmount: payment.creatorAmount,
-                            creatorUPI: payment.application.upiId,
-                            releasedAt: payment.releasedAt,
-                            amountDetails: {
-                                quotedPrice: payment.quotedPrice,
-                                creatorFee: payment.creatorFee,
-                                brandFee: payment.brandFee,
-                                platformFee: payment.platformFee,
-                                totalAmount: payment.totalAmount,
-                                creatorAmount: payment.creatorAmount
-                            }
-                        };
-                    }
-                } catch (error) {
-                    console.error('Error fetching payment info for response:', error);
-                }
-            }
-
-            res.json({
-                success: true,
-                message: `Submission ${value.status.toLowerCase()} successfully`,
-                data: {
-                    submission: updatedSubmission,
-                    payment: paymentInfo
-                }
-            });
-        } catch (error) {
-            console.error('Error reviewing submission:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to review submission'
-            });
-        }
-    };
-
     // GET /gigs/:id/deliveries - Get deliveries for a gig (brand/creator)
     getGigDeliveries = async (req, res) => {
         try {
             const { id } = req.params;
             const userId = req.headers['x-user-id'] || req.user?.id;
+
+            // Prevent browser caching of delivery data - always fetch fresh from server
+            res.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+            res.set('Pragma', 'no-cache');
+            res.set('Expires', '0');
 
             if (!userId) {
                 return res.status(401).json({
