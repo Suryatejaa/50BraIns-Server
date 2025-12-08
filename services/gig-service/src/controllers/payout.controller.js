@@ -342,27 +342,9 @@ Thank you for your excellent work! 🎉`;
      */
     async getPendingPayouts(req, res) {
         try {
-            const { days = 1 } = req.query;
-            const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
             const pendingPayouts = await prisma.payment.findMany({
                 where: {
-                    status: 'READY_FOR_MANUAL_PAYOUT', // Only fetch payments ready for payout
-                    OR: [
-                        // Payments that were recently moved to ready status
-                        {
-                            createdAt: {
-                                gte: daysAgo
-                            }
-                        },
-                        // Or any payment in READY_FOR_MANUAL_PAYOUT status regardless of age
-                        {
-                            notes: {
-                                path: ['readyForManualPayout'],
-                                equals: true
-                            }
-                        }
-                    ]
+                    status: 'READY_FOR_MANUAL_PAYOUT' // Only fetch payments ready for payout
                 },
                 include: {
                     application: {
@@ -392,6 +374,17 @@ Thank you for your excellent work! 🎉`;
             });
 
             const totalAmount = pendingPayouts.reduce((sum, payment) => sum + payment.creatorAmount, 0);
+
+            console.log('📊 Pending payouts query result:', {
+                count: pendingPayouts.length,
+                totalAmount: totalAmount,
+                payments: pendingPayouts.map(p => ({
+                    id: p.id,
+                    status: p.status,
+                    gigTitle: p.application.gig.title,
+                    creatorAmount: p.creatorAmount
+                }))
+            });
 
             res.json({
                 success: true,
