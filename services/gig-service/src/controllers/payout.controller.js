@@ -347,30 +347,15 @@ Thank you for your excellent work! 🎉`;
 
             const pendingPayouts = await prisma.payment.findMany({
                 where: {
-                    status: 'HELD_ESCROW',
-                    heldEscrowAt: {
-                        gte: daysAgo
-                    },
+                    status: 'READY_FOR_MANUAL_PAYOUT', // Only fetch payments ready for payout
                     OR: [
-                        // Look for payments with submissionApproved flag (set by reviewSubmission)
+                        // Payments that were recently moved to ready status
                         {
-                            notes: {
-                                path: ['submissionApproved'],
-                                equals: true
+                            createdAt: {
+                                gte: daysAgo
                             }
                         },
-                        // Or payments where application status is CLOSED (happens after approval)
-                        {
-                            application: {
-                                status: 'CLOSED',
-                                submissions: {
-                                    some: {
-                                        status: 'APPROVED'
-                                    }
-                                }
-                            }
-                        },
-                        // Or payments specifically marked for manual payout
+                        // Or any payment in READY_FOR_MANUAL_PAYOUT status regardless of age
                         {
                             notes: {
                                 path: ['readyForManualPayout'],
@@ -402,7 +387,7 @@ Thank you for your excellent work! 🎉`;
                     }
                 },
                 orderBy: {
-                    heldEscrowAt: 'desc'
+                    createdAt: 'desc'
                 }
             });
 
@@ -419,7 +404,8 @@ Thank you for your excellent work! 🎉`;
                         creatorAmount: payment.creatorAmount,
                         upiId: payment.application.upiId,
                         approvedAt: payment.application.submissions[0]?.reviewedAt,
-                        receipt: payment.receipt
+                        receipt: payment.receipt,
+                        status: 'READY_FOR_MANUAL_PAYOUT'
                     }))
                 }
             });

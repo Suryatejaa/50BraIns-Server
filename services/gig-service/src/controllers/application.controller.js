@@ -1403,30 +1403,31 @@ class ApplicationController {
                                 throw new Error('Creator UPI ID is missing from application');
                             }
 
-                            console.log('✅ Submission approved - Payment remains in escrow for cron processing:', {
+                            console.log('✅ Submission approved - Payment ready for manual payout:', {
                                 paymentId: payment.id,
                                 creatorAmount: payment.creatorAmount,
                                 creatorUPI: submission.application.upiId,
-                                status: 'HELD_ESCROW',
-                                willBeProcessedBy: 'Daily cron job within 24-48 hours'
+                                status: 'READY_FOR_MANUAL_PAYOUT',
+                                willBeProcessedBy: 'Manual payout system'
                             });
 
-                            // Update payment notes to track approval
+                            // Update payment status to READY_FOR_MANUAL_PAYOUT and track approval
                             await tx.payment.update({
                                 where: { id: payment.id },
                                 data: {
+                                    status: 'READY_FOR_MANUAL_PAYOUT',
                                     notes: {
                                         ...payment.notes,
                                         submissionApproved: true,
                                         approvedSubmissionId: id,
                                         approvedAt: new Date().toISOString(),
-                                        pendingCronProcessing: true,
-                                        payoutMethod: 'Cashfree via daily cron job'
+                                        readyForManualPayout: true,
+                                        payoutMethod: 'Manual processing'
                                     }
                                 }
                             });
 
-                            console.log('✅ Payment marked for cron processing');
+                            console.log('✅ Payment status changed to READY_FOR_MANUAL_PAYOUT');
                         } else if (payment) {
                             console.log('⚠️ Payment exists but not in HELD_ESCROW status:', {
                                 paymentId: payment.id,
