@@ -520,6 +520,7 @@ model Payment {
   // Payment details
   currency        String   @default("INR")
   status          PaymentStatus @default(CREATED)
+  failureReason   String?  // Reason for payment failure if status is FAILED
   
   // Parties
   paidBy          String   // Brand userId
