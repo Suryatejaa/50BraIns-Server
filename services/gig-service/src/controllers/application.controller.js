@@ -1642,6 +1642,74 @@ class ApplicationController {
             });
         }
     };
+
+    // GET /gigs/:id/submissions - Get submissions for a gig (gig owner only)
+    getGigSubmissions = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const userId = req.headers['x-user-id'] || req.user?.id;
+
+            // Prevent browser caching of submission data - always fetch fresh from server
+            res.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+            res.set('Pragma', 'no-cache');
+            res.set('Expires', '0');
+
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Authentication required'
+                });
+            }
+
+            // Create cache key for gig submissions
+            const cacheKey = this.cache.generateKey('gig_submissions', id, userId);
+
+            // Use cache-first approach
+            const submissionsData = await this.cache.getList(cacheKey, async () => {
+                // Check if user owns this gig
+                const gig = await this.prisma.gig.findUnique({
+                    where: { id }
+                });
+
+                if (!gig) {
+                    throw new Error('Gig not found');
+                }
+
+                if (gig.postedById !== userId) {
+                    throw new Error('You can only view submissions for your own gigs');
+                }
+
+                const submissions = await this.prisma.submission.findMany({
+                    where: { gigId: id },
+                    include: {
+                        application: {
+                            select: {
+                                id: true,
+                                applicantId: true,
+                                applicantType: true,
+                                quotedPrice: true,
+                                status: true
+                            }
+                        }
+                    },
+                    orderBy: { submittedAt: 'desc' }
+                });
+
+                return submissions;
+            }, 300); // 5 minute TTL
+
+            res.json({
+                success: true,
+                data: submissionsData
+            });
+        } catch (error) {
+            console.error('Error fetching submissions:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch submissions'
+            });
+        }
+    };
     // GET /api/applications/:applicationId/status
     // Check if creator can submit delivery
     getDeliveryStatus = async (req, res) => {

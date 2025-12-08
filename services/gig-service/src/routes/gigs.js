@@ -117,6 +117,9 @@ router.post('/deliveries/:id/review', requireAuth, asyncHandler(applicationContr
 // POST /gigs/submissions/:id/review - Review a submission (gig owner only)
 router.post('/submissions/:id/review', requireAuth, asyncHandler(applicationController.reviewSubmission));
 
+// GET /gigs/:id/submissions - Get submissions for a gig (gig owner only)
+router.get('/:id/submissions', requireAuth, asyncHandler(applicationController.getGigSubmissions));
+
 // DELETE /gigs/applications/:id - Withdraw an application (applicant only)
 router.delete('/applications/:id', requireAuth, asyncHandler(applicationController.withdrawApplication));
 
@@ -151,9 +154,6 @@ router.get('/:id', asyncHandler(gig_controller.getGigById));
 
 // GET /gigs/:id/applications - Get applications for a gig (gig owner only)
 router.get('/:gigId/applications', requireAuth, asyncHandler(gigController.getGigApplications));
-
-// GET /gigs/:id/submissions - Get submissions for a gig (gig owner only)
-router.get('/:id/submissions', requireAuth, asyncHandler(gigController.getGigSubmissions));
 
 // PUT /gigs/:id/status - Update gig status (gig owner only)
 router.put('/:id/status', requireAuth, asyncHandler(gigController.updateGigStatus));
