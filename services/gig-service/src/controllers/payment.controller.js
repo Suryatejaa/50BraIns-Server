@@ -42,10 +42,30 @@ class PaymentController {
       }
 
       // Check if payment already exists
-      if (application.payment) {
+      const COMPLETED_PAYMENT_STATUSES = [
+        'HELD_ESCROW',
+        'READY_FOR_MANUAL_PAYOUT',
+        'RELEASED'
+      ];
+
+      // Check if payment already exists and is completed
+      if (application.payment && COMPLETED_PAYMENT_STATUSES.includes(application.payment.status)) {
         return res.status(400).json({
           success: false,
-          error: 'Payment already exists for this application'
+          error: 'Payment already processed for this application',
+          currentStatus: application.payment.status
+        });
+      }
+
+      // If there's an existing payment that's not completed, handle cleanup
+      if (application.payment) {
+        // Mark old payment attempt as abandoned
+        await prisma.payment.update({
+          where: { id: application.payment.id },
+          data: {
+            status: 'FAILED',
+            failureReason: 'User retry - previous attempt abandoned'
+          }
         });
       }
 
